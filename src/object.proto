@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+message noa_metadata {
+	string name = 1;
+	int32 datatype = 2;
+        int32 backend_format = 3;
+	int32 backend = 4;
+	repeated int64 dims = 5;
+	int32 num_chunks = 6;
+	repeated int64 chunk_dims = 7;
+	string id = 8;
+}

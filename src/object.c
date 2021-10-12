@@ -130,7 +130,6 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
             strlen(bucket->object_store) + strlen(object_metadata->id) +
             snprintf(NULL, 0, "-%d.h5", object_metadata->num_chunks) + 3;
         chunk_path = malloc(sizeof(char) * chunk_path_len);
-#pragma omp parallel for
         for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
              chunk_id++) {
           snprintf(chunk_path, chunk_path_len, "%s/%s-%d.h5",
@@ -160,7 +159,6 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
             strlen(bucket->object_store) + strlen(object_metadata->id) +
             snprintf(NULL, 0, "-%d.bin", object_metadata->num_chunks) + 3;
         chunk_path = malloc(sizeof(char) * chunk_path_len);
-#pragma omp parallel for
         for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
              chunk_id++) {
           snprintf(chunk_path, chunk_path_len, "%s/%s-%d.bin",
@@ -180,7 +178,6 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
             strlen(bucket->object_store) + strlen(object_metadata->id) +
             snprintf(NULL, 0, "-%d.vtk", object_metadata->num_chunks) + 3;
         chunk_path = malloc(sizeof(char) * chunk_path_len);
-#pragma omp parallel for
         for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
              chunk_id++) {
           snprintf(chunk_path, chunk_path_len, "%s/%s-%d.vtk",

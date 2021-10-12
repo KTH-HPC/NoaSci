@@ -1,9 +1,15 @@
 #include "private/hdf5_backend.h"
 
+#ifdef USE_MERO
+#include "aoi_functions.h"
+#include <hdf5_hl.h>
+#endif
+
 #include <hdf5.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
 
 int put_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, const void *data,
@@ -18,25 +24,27 @@ int put_object_chunk_hdf5(const container *bucket,
            object_metadata->id, bucket->mpi_rank);
 
   hsize_t dims[object_metadata->n_dims];
-  hid_t file, dataspace, dataset;
+  hid_t file, dataspace, dataset, fapl;
   herr_t status;
 
   // create file/object on backend
   switch (object_metadata->backend) {
-    case POSIX:
-      file = H5Fcreate(chunk_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-      break;
     case MERO:
 #ifdef USE_MERO
-      hid_t fapl = H5Pcreate(H5P_FILE_ACCESS);
+      fapl = H5Pcreate(H5P_FILE_ACCESS);
       status = H5Pset_fapl_core(fapl, /* memory increment size: 4M */ 1 << 22,
                                 /*backing_store*/ false);
       assert(status >= 0 && "H5Pset_fapl_core failed");
       file = H5Fcreate(chunk_path, H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
-#else
-      fprintf(stderr, "Error: Mero not supported!\n");
-#endif
       break;
+#else
+      fprintf(stderr, "Error: Mero backend not supported!\n");
+      // continue to POSIX backend instead
+#endif
+    case POSIX:
+      file = H5Fcreate(chunk_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+      break;
+
     default:
       fprintf(stderr, "Error: Unknown backend!\n");
       exit(1);
@@ -111,35 +119,37 @@ int put_object_chunk_hdf5(const container *bucket,
 #ifdef USE_MERO
     H5Pclose(fapl);
     H5Fflush(file, H5F_SCOPE_GLOBAL);
-    int world_rank;
-    int rc;
-    uint64_t high_id;
+    uint64_t high_id = 0;
+    int rc = 0;
+    void *buffer = NULL;
+    MPI_Request mpi_req;
+    MPI_Status mpi_status;
 
-    ssize_t imgSize = H5Fget_file_image(file, NULL, 0);
-    void *buffer = malloc(imgSize);
-    H5Fget_file_image(file, buffer, imgSize);
-    //_object_binary_write(uuid_filename, buffer, imgSize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    if (world_rank == 0) {
-      rc = aoi_create_object_metadata(uuid_filename, &high_id, imgSize,
+    size_t imgSize = H5Fget_file_image(file, NULL, 0);
+    if (bucket->mpi_rank == 0) {
+      rc = aoi_create_object_metadata(object_metadata->id, &high_id, imgSize,
                                       sizeof(*buffer));
       if (rc) {
         fprintf(stderr, "PUT: Failed to create metadata!\n");
         return rc;
       }
     }
-    MPI_Bcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+    MPI_Ibcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD, &mpi_req);
 
-    rc = aoi_create_object(high_id, part_id);
+    buffer = malloc(imgSize);
+    H5Fget_file_image(file, buffer, imgSize);
+    MPI_Wait(&mpi_req, &mpi_status);
+
+    rc = aoi_create_object(high_id, bucket->mpi_rank);
     if (rc) {
-      aoi_delete_object(high_id, part_id);
+      aoi_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to create data object!\n");
       return rc;
     }
 
-    rc = aoi_write_object(high_id, part_id, (char *)buffer, imgSize);
+    rc = aoi_write_object(high_id, bucket->mpi_rank, (char *)buffer, imgSize);
     if (rc) {
-      aoi_delete_object(high_id, part_id);
+      aoi_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to write data!\n");
       return rc;
     }
@@ -159,6 +169,8 @@ int get_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, void **data,
                           char **header) {
   hid_t status, file, dataset;
+  int rc = 0;
+  uint64_t high_id, num, size;
 
   size_t chunk_path_len = strlen(bucket->object_store) +
                           strlen(object_metadata->id) +
@@ -168,7 +180,7 @@ int get_object_chunk_hdf5(const container *bucket,
            object_metadata->id, bucket->mpi_rank);
 
   size_t total_size = 1;
-#pragma omp parallel for
+#pragma omp parallel for reduction(*:total_size)
   for (int i = 0; i < object_metadata->n_dims; i++) {
     total_size = total_size * object_metadata->chunk_dims[i];
   }
@@ -177,12 +189,26 @@ int get_object_chunk_hdf5(const container *bucket,
     case POSIX:
       file = H5Fopen(chunk_path, H5F_ACC_RDONLY, H5P_DEFAULT);
       break;
-    case MERO:
 #ifdef USE_MERO
-#else
-      fprintf(stderr, "Error: Mero is not supported!\n");
-#endif
+    case MERO:
+        if (bucket->mpi_rank == 0) {
+                size_t total_length = 0;
+                rc = aoi_get_object_metadata(object_metadata->id, &high_id, &num, &size);
+                if (rc) { fprintf(stderr, "GET: Failed to get metadata!\n"); return rc; }
+        }
+        MPI_Bcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&num, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&size, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+
+        void *buffer = malloc(size * num);
+        if (buffer == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
+
+        rc = aoi_read_object(high_id, bucket->mpi_rank, buffer, size * num);
+        if (rc) { free(buffer); fprintf(stderr, "GET: Fail to get object data!\n"); }
+
+        file = H5LTopen_file_image(buffer, size * num, H5LT_FILE_IMAGE_DONT_COPY | H5LT_FILE_IMAGE_OPEN_RW/* | H5LT_FILE_IMAGE_DONT_RELEASE*/);
       break;
+#endif
     default:
       fprintf(stderr, "Error: unknown backend\n");
   }
@@ -190,19 +216,19 @@ int get_object_chunk_hdf5(const container *bucket,
   dataset = H5Dopen2(file, "/data", H5P_DEFAULT);
   switch (object_metadata->datatype) {
     case DOUBLE:
-      *data = malloc(sizeof(double) * total_size);
+      *data = (double*)malloc(sizeof(double) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
-                       H5P_DEFAULT, *data);
+                       H5P_DEFAULT, (double*)*data);
       break;
     case FLOAT:
-      *data = malloc(sizeof(float) * total_size);
+      *data = (float*)malloc(sizeof(float) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-                       *data);
+                       (float*)*data);
       break;
     case INT:
-      *data = malloc(sizeof(int) * total_size);
+      *data = (int*)malloc(sizeof(int) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-                       *data);
+                       (int*)*data);
       break;
     default:
       fprintf(stderr, "Datatype undefined\n");
@@ -215,7 +241,7 @@ int get_object_chunk_hdf5(const container *bucket,
     hid_t header_attribute = H5Aopen(dataset, "header", H5P_DEFAULT);
     hsize_t header_size = H5Aget_storage_size(header_attribute);
     hid_t header_attribute_type = H5Aget_type(header_attribute);
-    *header = (char *)malloc(header_size);
+    *header = (char*)malloc(header_size);
     status =
         H5Aread(header_attribute, header_attribute_type, (void *)(*header));
   }
@@ -223,5 +249,5 @@ int get_object_chunk_hdf5(const container *bucket,
   H5Dclose(dataset);
   H5Fclose(file);
   free(chunk_path);
-  return 0;
+  return rc;
 }

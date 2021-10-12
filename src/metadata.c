@@ -192,7 +192,6 @@ NoaMetadata* noa_create_metadata(const container* bucket,
   long* proc_dims[dimensionality];
   int num_proc_needed = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-#pragma omp parallel for reduction(* : num_proc_needed)
   for (int i = 0; i < dimensionality; i++)
     num_proc_needed *= dims[i] / chunk_dims[i];
   if (num_proc_needed != world_size)
@@ -217,7 +216,6 @@ NoaMetadata* noa_create_metadata(const container* bucket,
   object_metadata->num_chunks = 1;
   object_metadata->n_chunk_dims = dimensionality;
   object_metadata->chunk_dims = (long*)malloc(sizeof(long) * dimensionality);
-#pragma omp parallel for
   for (int i = 0; i < dimensionality; i++) {
     object_metadata->chunk_dims[i] = chunk_dims[i];
     object_metadata->dims[i] = dims[i];

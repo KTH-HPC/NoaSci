@@ -11,9 +11,11 @@ if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+option(USE_MERO "Build Mero Object Store Backend" OFF)
+
 find_package(OpenMP)
 find_package(MPI REQUIRED)
-find_package(HDF5 COMPONENTS C)
+find_package(HDF5 COMPONENTS C HL)
 find_package(protobuf-c COMPONENTS C)
 
 find_package(PkgConfig REQUIRED)
@@ -53,6 +55,7 @@ if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${UUID_LINK_LIBRARIES}
         ${PROTO-C_LINK_LIBRARIES}
         ${HDF5_C_LIBRARIES}
+        ${HDF5_HL_LIBRARIES}
         OpenMP::OpenMP_C
         MPI::MPI_C)
 
@@ -60,11 +63,18 @@ if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     target_include_directories(noa PRIVATE 
         include
         include/private
+        ${PROTO-C_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         ${CMAKE_CURRENT_BINARY_DIR}
         ${UUID_INCLUDE_DIRS}
         ${HDF5_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH})
+
+    if(USE_MERO)
+        target_link_libraries(noa PRIVATE /home/users/project/SHARED/libaoi/libaoi.so)
+        target_include_directories(noa PRIVATE /home/users/project/SHARED/libaoi)
+        target_compile_definitions(noa PRIVATE USE_MERO)
+    endif()
 
     # PIC for shared library
     set_property(TARGET noa PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -76,7 +86,8 @@ if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     target_link_libraries(app.out PUBLIC
         noa
         MPI::MPI_C)
-    target_include_directories(noa PUBLIC
+    target_include_directories(app.out PUBLIC
+        ${PROTO-C_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         include) 
@@ -87,4 +98,10 @@ message("MPI library path:  ${MPI_C_LIBRARIES}")
 message("HDF5 library path: ${HDF5_C_LIBRARIES}")
 message("HDF5 include path: ${HDF5_INCLUDE_DIRS}")
 message("Protoc library:    ${PROTO-C_LINK_LIBRARIES}")
+message("Protoc include:    ${PROTO-C_INCLUDE_DIRS}")
 message("UUID library:      ${UUID_LINK_LIBRARIES}")
+if (USE_MERO)
+    message("Use Mero: ON")
+else()
+    message("Use Mero: OFF")
+endif()

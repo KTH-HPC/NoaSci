@@ -1,13 +1,25 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <math.h>
 
 #include "noa.h"
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
-  int world_size;
+  int world_size, world_rank;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+  size_t hostname_len = 256;
+  char hostname[hostname_len];
+  assert( gethostname(hostname, hostname_len) == 0);
+
+  char mero_filename[265];
+  snprintf(mero_filename, 265, "./sagerc_%s", hostname);
+  noa_init(mero_filename, 4096, world_rank, 0);
+
 
   const char* metadata_path = "./metadata";
   const char* data_path = "./data";
@@ -26,13 +38,13 @@ int main(int argc, char* argv[]) {
   // long chunk_dims[] = { 2, 2, 4 }; // 1x2x2
   long dims[] = {
       1,
-      2,
-      4,
+      1024,
+      1024,
   };
   long chunk_dims[] = {
       1,
-      1,
-      2,
+      512,
+      512,
   };  // 1x2x2
   NoaMetadata* metadata =
       noa_create_metadata(bucket, "testObject", DOUBLE, HDF5, POSIX,
@@ -92,12 +104,15 @@ int main(int argc, char* argv[]) {
       for (size_t k = 0; k < chunk_dims[2]; k++) {
         for (size_t j = 0; j < chunk_dims[1]; j++) {
           for (size_t i = 0; i < chunk_dims[0]; i++) {
-            printf("%f ", data[k * chunk_dims[1] * chunk_dims[0] +
-                               j * chunk_dims[0] + i]);
+            double original = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
+            double retrieved = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
+            if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
+            //printf("%f ", data[k * chunk_dims[1] * chunk_dims[0] +
+            //                   j * chunk_dims[0] + i]);
           }
-          printf("\n");
+          //printf("\n");
         }
-        printf("%d next layer...\n", bucket->mpi_rank);
+        //printf("%d next layer...\n", bucket->mpi_rank);
       }
     }
     MPI_Barrier(MPI_COMM_WORLD);

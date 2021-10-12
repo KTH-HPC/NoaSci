@@ -27,7 +27,7 @@ typedef enum {
 } BACKEND;
 
 // Init NOA
-int noa_init();
+int noa_init(const char *mero_config_filename, size_t block_size, int socket, int tier);
 int noa_finalize();
 
 // Containers

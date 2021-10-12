@@ -106,7 +106,6 @@ int put_object_chunk_binary(const container *bucket,
       break;
   }
 
-#pragma omp parallel for
   for (size_t i = 0; i < object_metadata->n_dims; i++)
     total_file_size *= object_metadata->chunk_dims[i];
 
@@ -145,7 +144,6 @@ int get_object_chunk_binary(const container *bucket,
       break;
   }
 
-#pragma omp parallel for
   for (size_t i = 0; i < object_metadata->n_dims; i++)
     total_file_size *= object_metadata->chunk_dims[i];
   size_t system_file_size;

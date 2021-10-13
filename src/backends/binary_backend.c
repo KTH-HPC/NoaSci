@@ -1,4 +1,5 @@
 #include "private/binary_backend.h"
+#include "storage/noa_motr.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -9,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <mpi.h>
 
 // aux tool to write a file
 static int write_binary_file(const char *filename, const void *data,
@@ -84,13 +86,14 @@ int put_object_chunk_binary(const container *bucket,
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
   size_t total_file_size = 1;
-  size_t chunk_path_len =
-      strlen(bucket->object_store) + strlen(object_metadata->id) +
-      snprintf(NULL, 0, "%d.%s", bucket->mpi_rank, suffix) + 3;
-  char *chunk_path = malloc(sizeof(char) * chunk_path_len);
-  snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
-           object_metadata->id, bucket->mpi_rank, suffix);
+  size_t chunk_path_len = 0;
+  char *chunk_path = NULL;
+#ifdef USE_MERO
+  uint64_t high_id;
+  int rc = 0;
+#endif
 
+  // compute total size with data type
   switch (object_metadata->datatype) {
     case INT:
       total_file_size = sizeof(int);
@@ -105,11 +108,61 @@ int put_object_chunk_binary(const container *bucket,
       fprintf(stderr, "Error: Unknown datatype!\n");
       break;
   }
-
   for (size_t i = 0; i < object_metadata->n_dims; i++)
     total_file_size *= object_metadata->chunk_dims[i];
 
-  write_binary_file(chunk_path, &data[offset], total_file_size, header);
+  switch (object_metadata->backend) {
+    case BINARY:
+    case VTK:
+      // compute path length and allocate memory
+      chunk_path_len =
+          strlen(bucket->object_store) + strlen(object_metadata->id) +
+          snprintf(NULL, 0, "%d.%s", bucket->mpi_rank, suffix) + 3;
+      chunk_path = malloc(sizeof(char) * chunk_path_len);
+
+      // generate path
+      snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
+               object_metadata->id, bucket->mpi_rank, suffix);
+
+      // write binary file and free path buffer
+      write_binary_file(chunk_path, &data[offset], total_file_size, header);
+      free(chunk_path);
+      break;
+    case MERO:
+#ifdef USE_MERO
+      // rank zero creates metadata object and generate high ID
+      if (bucket->mpi_rank) {
+        rc = motr_create_object_metadata(object_metadata->id, &high_id, total_file_size, sizeof(void));
+        if (rc) {
+          fprintf(stderr, "PUT: Failed to create metadata!\n");
+          return rc;
+        }
+      }
+
+      // broadcast high ID
+      MPI_Bcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+      rc = motr_create_object(high_id, bucket->mpi_rank);
+      if (rc) {
+        motr_delete_object(high_id, bucket->mpi_rank);
+        fprintf(stderr, "PUT: Failed to create data object!\n");
+        return rc;
+      }
+
+      // write object to mero
+      rc = motr_write_object(high_id, bucket->mpi_rank, (char *)data, total_file_size);
+      if (rc) {
+        motr_delete_object(high_id, bucket->mpi_rank);
+        fprintf(stderr, "PUT: Failed to write data!\n");
+        return rc;
+      }
+#else
+      fprintf(stderr, "Error: Meror not supported!\n");
+#endif
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown data backend!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+  }
   return 0;
 }
 
@@ -117,17 +170,21 @@ int get_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
                             const char *suffix, void **data, char **header, int chunk_id) {
   fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
+  *header = NULL;
 
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
   size_t total_file_size = 1;
-  size_t chunk_path_len =
-      strlen(bucket->object_store) + strlen(object_metadata->id) +
-      snprintf(NULL, 0, "%d.%s", chunk_id, suffix) + 3;
-  char *chunk_path = malloc(sizeof(char) * chunk_path_len);
-  snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
-           object_metadata->id, chunk_id, suffix);
+  size_t chunk_path_len;
+  char *chunk_path = NULL;
+#ifdef USE_MERO
+  size_t num_and_size[2];
+  uint64_t high_id;
+  MPI_Request high_id_req, num_and_size_req;
+  int rc = 0;
+#endif
 
+  // compute object size according to data type
   switch (object_metadata->datatype) {
     case INT:
       total_file_size = sizeof(int);
@@ -142,13 +199,51 @@ int get_object_chunk_binary(const container *bucket,
       fprintf(stderr, "Error: Unknown datatype!\n");
       break;
   }
-
   for (size_t i = 0; i < object_metadata->n_dims; i++)
     total_file_size *= object_metadata->chunk_dims[i];
-  size_t system_file_size;
 
-  read_binary_file(chunk_path, data, &system_file_size);
-  if (object_metadata->backend_format != VTK)
-    assert(system_file_size == total_file_size);
+  size_t system_file_size; // <- for verification
+
+  switch (object_metadata->backend) {
+    case BINARY:
+    case VTK:
+      chunk_path_len =
+          strlen(bucket->object_store) + strlen(object_metadata->id) +
+          snprintf(NULL, 0, "%d.%s", chunk_id, suffix) + 3;
+      chunk_path = malloc(sizeof(char) * chunk_path_len);
+      snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
+           object_metadata->id, chunk_id, suffix);
+
+      read_binary_file(chunk_path, data, &system_file_size);
+      if (object_metadata->backend_format != VTK)
+        assert(system_file_size == total_file_size);
+      free(chunk_path);
+      break;
+    case MERO:
+#ifdef USE_MERO
+      if (bucket->mpi_rank == 0) {
+        rc = motr_get_object_metadata(object_metadata->id, &high_id, &num_and_size[0], &num_and_size[1]);
+        if (rc) { fprintf(stderr, "GET: Failed to get metadata!\n"); return rc; }
+      }
+      MPI_Ibcast(num_and_size, 2, MPI_UINT64_T, 0, MPI_COMM_WORLD, &num_and_size_req);
+      MPI_Ibcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD, &high_id_req);
+
+      MPI_Wait(&num_and_size_req, MPI_STATUS_IGNORE);
+      size_t total_buffer_size = num_and_size[0] * num_and_size[1];
+      *data = malloc(total_buffer_size);
+      if (*data == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
+
+      MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
+      rc = motr_read_object(high_id, chunk_id, *data, total_buffer_size);
+      if (rc) { free(*data); fprintf(stderr, "GET: Fail to get object data!\n"); }
+#else
+      fprintf(stderr, "Error: Mero not supported!\n");
+#endif
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown backend!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
   return 0;
 }

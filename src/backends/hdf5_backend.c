@@ -1,7 +1,7 @@
 #include "private/hdf5_backend.h"
 
 #ifdef USE_MERO
-#include "aoi_functions.h"
+#include "noa_motr.h"
 #include <hdf5_hl.h>
 #endif
 
@@ -10,6 +10,122 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+
+void create_hdf5_vds(const container* bucket,
+                     const NoaMetadata* object_metadata) {
+  hid_t vds_file, vds_dataspace, src_dataspace, vds, dcpl;
+  herr_t status;
+  hsize_t start[object_metadata->n_dims], count[object_metadata->n_dims],
+      block[object_metadata->n_dims];
+  int world_size;
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+  /* initialize chunk pointer */
+  for (int i = 0; i < object_metadata->n_dims; i++) {
+    start[i] = object_metadata->chunk_dims[i];
+    count[i] = 1;
+    block[i] = object_metadata->chunk_dims[i];
+  }
+
+  // get chunk path buffer to generate links later
+  // (data storage)/(uuid)-(chunk id).h5\0
+  size_t chunk_path_len = strlen(bucket->object_store) +
+                          strlen(object_metadata->id) +
+                          snprintf(NULL, 0, "%d", world_size) + 6;
+  char* chunk_path = malloc(sizeof(char) * chunk_path_len);
+
+  /* create VDS to link chunks, reuse chunk path buffer for VDS path */
+  snprintf(chunk_path, chunk_path_len, "%s/%s.h5", bucket->object_store,
+           object_metadata->id);
+  vds_file = H5Fcreate(chunk_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  vds_dataspace = H5Screate_simple(object_metadata->n_dims,
+                                   (hsize_t*)object_metadata->dims, NULL);
+  src_dataspace = H5Screate_simple(object_metadata->n_dims, block, NULL);
+  dcpl = H5Pcreate(H5P_DATASET_CREATE);
+
+  /* create fill value for un-defined data */
+  switch (object_metadata->datatype) {
+    case FLOAT: {
+      float fill_value = -65535.0;
+      status = H5Pset_fill_value(dcpl, H5T_NATIVE_FLOAT, &fill_value);
+      assert(status >= 0);
+    } break;
+    case DOUBLE: {
+      double fill_value = -65535.0;
+      status = H5Pset_fill_value(dcpl, H5T_NATIVE_DOUBLE, &fill_value);
+      assert(status >= 0);
+    } break;
+    case INT: {
+      int fill_value = -65535;
+      status = H5Pset_fill_value(dcpl, H5T_NATIVE_INT, &fill_value);
+      assert(status >= 0);
+    } break;
+    default:
+      fprintf(stderr, "invalid datatype\n");
+  }
+
+  /* group cycle size for different dimensions */
+  int group[object_metadata->n_dims];
+  for (int i = 0; i < object_metadata->n_dims; i++) {
+    if (i == 0)
+      group[i] = (int)((double)object_metadata->dims[i] / (double)block[i]);
+    else
+      group[i] = (int)((double)object_metadata->dims[i] / (double)block[i] *
+                       group[i - 1]);
+  }
+
+  /* compute starting point of chunk and link to virtual dataspace */
+  for (int i = 0; i < object_metadata->num_chunks; i++) {
+    for (int j = 0; j < object_metadata->n_dims; j++) {
+      int factor = (int)((double)group[j] /
+                         ((double)object_metadata->dims[j] / (double)block[j]));
+      int rotate = (i + factor) % factor;
+      if (rotate == 0) {
+        start[j] = (start[j] + block[j] + object_metadata->dims[j]) %
+                   object_metadata->dims[j];
+      }
+    }
+    snprintf(chunk_path, chunk_path_len, "%s-%d.h5", object_metadata->id, i);
+    status = H5Sselect_hyperslab(vds_dataspace, H5S_SELECT_SET, start, NULL,
+                                 count, block);
+    assert(status >= 0);
+    status =
+        H5Pset_virtual(dcpl, vds_dataspace, chunk_path, "data", src_dataspace);
+    assert(status >= 0);
+  }
+
+  /* link to virtual dataset */
+  switch (object_metadata->datatype) {
+    case FLOAT: {
+      vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_FLOAT, vds_dataspace,
+                       H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
+      break;
+    }
+    case DOUBLE: {
+      vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_DOUBLE, vds_dataspace,
+                       H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
+      break;
+    }
+    case INT: {
+      vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_INT, vds_dataspace,
+                       H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
+      break;
+    }
+    default:
+      fprintf(stderr, "invalid datatype\n");
+  }
+
+  /* cleanup vds */
+  H5Dclose(vds);
+  H5Sclose(src_dataspace);
+  H5Sclose(vds_dataspace);
+  H5Fclose(vds_file);
+  free(chunk_path);
+}
+
 
 int put_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, const void *data,
@@ -134,8 +250,9 @@ int put_object_chunk_hdf5(const container *bucket,
     MPI_Request mpi_req;
 
     size_t imgSize = H5Fget_file_image(file, NULL, 0);
+    // TODO USE Allreduce to get the max in case the attribute makes a difference?
     if (bucket->mpi_rank == 0) {
-      rc = aoi_create_object_metadata(object_metadata->id, &high_id, imgSize,
+      rc = motr_create_object_metadata(object_metadata->id, &high_id, imgSize,
                                       sizeof(*buffer));
       if (rc) {
         fprintf(stderr, "PUT: Failed to create metadata!\n");
@@ -148,16 +265,16 @@ int put_object_chunk_hdf5(const container *bucket,
     H5Fget_file_image(file, buffer, imgSize);
     MPI_Wait(&mpi_req, MPI_STATUS_IGNORE);
 
-    rc = aoi_create_object(high_id, bucket->mpi_rank);
+    rc = motr_create_object(high_id, bucket->mpi_rank);
     if (rc) {
-      aoi_delete_object(high_id, bucket->mpi_rank);
+      motr_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to create data object!\n");
       return rc;
     }
 
-    rc = aoi_write_object(high_id, bucket->mpi_rank, (char *)buffer, imgSize);
+    rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer, imgSize);
     if (rc) {
-      aoi_delete_object(high_id, bucket->mpi_rank);
+      motr_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to write data!\n");
       return rc;
     }
@@ -182,7 +299,7 @@ int get_object_chunk_hdf5(const container *bucket,
 #ifdef USE_MERO
   uint64_t high_id;
   uint64_t num_and_size[2];
-  MPI_Request high_id_req, size_req;
+  MPI_Request high_id_req, num_and_size_req;
 #endif
 
   size_t chunk_path_len = strlen(bucket->object_store) +
@@ -204,20 +321,19 @@ int get_object_chunk_hdf5(const container *bucket,
 #ifdef USE_MERO
     case MERO:
         if (bucket->mpi_rank == 0) {
-                size_t total_length = 0;
-                rc = aoi_get_object_metadata(object_metadata->id, &high_id, &num_and_size[0], &num_and_size[1]);
+                rc = motr_get_object_metadata(object_metadata->id, &high_id, &num_and_size[0], &num_and_size[1]);
                 if (rc) { fprintf(stderr, "GET: Failed to get metadata!\n"); return rc; }
         }
-        MPI_Icast(num_and_size, 2, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-        MPI_Icast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        MPI_Ibcast(num_and_size, 2, MPI_UINT64_T, 0, MPI_COMM_WORLD, &num_and_size_req);
+        MPI_Ibcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD, &high_id_req);
 
-        MPI_Wait(&size_req, MPI_STATUS_IGNORE);
+        MPI_Wait(&num_and_size_req, MPI_STATUS_IGNORE);
         size_t total_buffer_size = num_and_size[0] * num_and_size[1];
         void *buffer = malloc(total_size);
         if (buffer == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
 
         MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
-        rc = aoi_read_object(high_id, chunk_id, buffer, total_buffer_size);
+        rc = motr_read_object(high_id, chunk_id, buffer, total_buffer_size);
         if (rc) { free(buffer); fprintf(stderr, "GET: Fail to get object data!\n"); }
 
         file = H5LTopen_file_image(buffer, total_buffer_size, H5LT_FILE_IMAGE_DONT_COPY | H5LT_FILE_IMAGE_OPEN_RW/* | H5LT_FILE_IMAGE_DONT_RELEASE*/);

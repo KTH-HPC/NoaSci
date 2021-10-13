@@ -29,19 +29,19 @@ int main(int argc, char* argv[]) {
   rc = noa_container_open(&bucket, container_name, metadata_path, data_path);
 
   long dims[] = {
-      1,
-      1024,
-      1024,
+      16,
+      4096,
+      4096,
   };
 
   long chunk_dims[] = {
-      1,
-      512,
-      512,
+      16,
+      2048,
+      2048,
   };  // 1x2x2
 
   NoaMetadata* metadata =
-      noa_create_metadata(bucket, "testObject", DOUBLE, HDF5,
+      noa_create_metadata(bucket, "testObject", DOUBLE, VTK,
 #ifdef USE_MERO
                           MERO,
 #else
@@ -56,22 +56,16 @@ int main(int argc, char* argv[]) {
   printf("chunk_dims: %ld %ld\n", metadata->chunk_dims[0],
          metadata->chunk_dims[1]);
 
-  double* data;
   size_t total_size = chunk_dims[0];
   for (size_t i = 1; i < sizeof(dims) / sizeof(long); i++) {
     total_size *= chunk_dims[i];
   }
 
-  data = malloc(sizeof(double) * total_size);
+  double *data = malloc(sizeof(double) * total_size);
+  if (data == NULL) printf("fail to allocate %ld !\n", sizeof(double) * total_size);
   double counter = 0.0;
-  for (int k = 0; k < chunk_dims[2]; k++) {
-    for (int j = 0; j < chunk_dims[1]; j++) {
-      for (int i = 0; i < chunk_dims[0]; i++) {
-        // data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] =
-        // (double)(k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i);
-        data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] = counter++;
-      }
-    }
+  for (size_t k = 0; k < total_size; k++) {
+    data[k] = counter++;
   }
 
   const char* header = "testHeader";
@@ -88,7 +82,7 @@ int main(int argc, char* argv[]) {
   metadata = noa_get_metadata(bucket, "testObject");
   char* get_header;
   rc = noa_get_chunk(bucket, metadata, (void**)&data, &get_header, bucket->mpi_rank);
-  printf("get header: %s\n", get_header);
+  if (get_header != NULL) printf("get header: %s\n", get_header);
 
   // rc = noa_free_metadata(bucket, metadata);
   // assert(rc == 0);
@@ -100,21 +94,17 @@ int main(int argc, char* argv[]) {
   for (int rank = 0; rank < world_size; rank++) {
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == bucket->mpi_rank) {
-      for (size_t k = 0; k < chunk_dims[2]; k++) {
-        for (size_t j = 0; j < chunk_dims[1]; j++) {
-          for (size_t i = 0; i < chunk_dims[0]; i++) {
-            double original = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
-            double retrieved = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
-            if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
-          }
-        }
+      for (size_t k = 0; k < total_size; k++) {
+        double original = data[k];
+        double retrieved = data[k];
+        if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
       }
     }
     MPI_Barrier(MPI_COMM_WORLD);
   }
 
   free(data);
-  free(get_header);
+  if (get_header != NULL) free(get_header);
 
   MPI_Finalize();
   return 0;

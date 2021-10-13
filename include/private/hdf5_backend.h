@@ -3,6 +3,9 @@
 
 #include "noa.h"
 
+void create_hdf5_vds(const container* bucket,
+                     const NoaMetadata* object_metadata);
+
 int put_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, const void *data,
                           const size_t offset, const char *header);

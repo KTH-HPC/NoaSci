@@ -2,11 +2,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "noa.h"
 
 #ifdef USE_MERO
-#include "aoi_functions.h"
+#include "noa_motr.h"
 #define MAX_LINE_LEN 1024
 
 // from https://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
@@ -20,7 +21,7 @@ static void trim(char * s) {
     memmove(s, p, l + 1);
 }
 
-static int my_aoi_init(const char *mero_config_filename, size_t block_size, int socket, int tier) {
+static int my_motr_init(const char *mero_config_filename, size_t block_size, int socket, int tier) {
   char key_string_buffer[MAX_LINE_LEN];
   char value_string_buffer[MAX_LINE_LEN];
 
@@ -78,7 +79,7 @@ printf("%s\n", local_proc_fid);
 
   printf("Mero Local Endpoint Address: %s HA Endpoint Address: %s Profile FID: %s Local Proc FID: %s\n", local_endpoint_addr, ha_endpoint_addr, profile_fid, local_proc_fid);
 
-  int rc = aoi_init(local_endpoint_addr, ha_endpoint_addr, profile_fid,
+  int rc = motr_init(local_endpoint_addr, ha_endpoint_addr, profile_fid,
                     local_proc_fid, block_size, tier);
   return rc;
 }
@@ -88,7 +89,7 @@ int noa_init(const char *mero_config_filename, size_t block_size, int socket, in
 {
   int rc = 0;
 #ifdef USE_MERO
-  rc = my_aoi_init(mero_config_filename, block_size, socket, tier);
+  rc = my_motr_init(mero_config_filename, block_size, socket, tier);
 #endif
   return rc;
 }
@@ -96,7 +97,7 @@ int noa_init(const char *mero_config_filename, size_t block_size, int socket, in
 int noa_finalize()
 {
 #ifdef USE_MERO
-  aoi_fini();
+  motr_fini();
 #endif
   return 0;
 }

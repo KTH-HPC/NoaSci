@@ -46,6 +46,30 @@ set(APP_SRC
 )
 
 if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
+    # build the storage engine to interact with motr if using cotrx
+    if(USE_MERO)
+        pkg_search_module(JSON-C REQUIRED json-c)
+        pkg_search_module(MOTR REQUIRED motr)
+        find_package(OpenSSL REQUIRED)
+        add_library(noa_motr STATIC src/storage/noa_motr.c)
+        target_include_directories(noa_motr PRIVATE
+                                   include/storage
+                                   ${JSON-C_INCLUDE_DIRS}
+                                   ${MOTR_INCLUDE_DIRS}
+                                   ${SSL_INCLUDE_DIRS})
+        target_link_libraries(noa_motr PRIVATE
+                              ${JSON-C_LINK_LIBRARIES}
+                              ${SSL_LINK_LIBRARIES}
+                              ${MOTR_LIBRARIES})
+
+        # hack to fix a conflict with the config.h from json-c
+        list(REMOVE_ITEM MOTR_CFLAGS "-includeconfig.h")
+        list(APPEND MOTR_CFLAGS -include/usr/include/motr/config.h)
+        target_compile_options(noa_motr PUBLIC -fPIC)
+        target_compile_options(noa_motr PRIVATE
+                               ${MOTR_CFLAGS})
+    endif()
+
     # build libaoi
     add_library(noa SHARED ${NOA_SRC})
 
@@ -57,22 +81,22 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${HDF5_HL_LIBRARIES}
         MPI::MPI_C)
 
+    # link to motr storage engine if enabling cortx
+    if(USE_MERO)
+        target_link_libraries(noa PRIVATE noa_motr)
+    endif()
+
     # header files including the generated proto
     target_include_directories(noa PRIVATE 
         include
         include/private
+        include/storage
         ${PROTO-C_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         ${CMAKE_CURRENT_BINARY_DIR}
         ${UUID_INCLUDE_DIRS}
         ${HDF5_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH})
-
-    if(USE_MERO)
-        target_link_libraries(noa PRIVATE /home/users/project/SHARED/libaoi/libaoi.so)
-        target_include_directories(noa PRIVATE /home/users/project/SHARED/libaoi)
-        target_compile_definitions(noa PRIVATE USE_MERO)
-    endif()
 
     # PIC for shared library
     target_compile_options(noa PRIVATE -O3 -fPIC -Wall)
@@ -95,7 +119,8 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${MPI_INCLUDE_PATH}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         include) 
-
+else()
+    message("Error finding packages!")
 endif()
 
 message("MPI include path:  ${MPI_C_INCLUDE_DIRS}")
@@ -105,6 +130,7 @@ message("HDF5 include path: ${HDF5_INCLUDE_DIRS}")
 message("Protoc library:    ${PROTO-C_LINK_LIBRARIES}")
 message("Protoc include:    ${PROTO-C_INCLUDE_DIRS}")
 message("UUID library:      ${UUID_LINK_LIBRARIES}")
+
 if (USE_MERO)
     message("Use Mero: ON")
 else()

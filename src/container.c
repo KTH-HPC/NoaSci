@@ -11,18 +11,18 @@ int noa_container_open(container** bucket, const char* container_name,
                        const char* metadata_path, const char* data_path) {
   int mpi_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-//  if (mpi_rank == 0) {
-//    struct stat sb;
-//    if (!(stat(metadata_path, &sb) == 0 && S_ISDIR(sb.st_mode))) {
-//      fprintf(stderr, "Metadata data path %s does not exist.\n", metadata_path);
-//      MPI_Abort(MPI_COMM_WORLD, 1);
-//    }
-//
-//    if (!(stat(data_path, &sb) == 0 && S_ISDIR(sb.st_mode))) {
-//      fprintf(stderr, "Data path %s does not exist.\n", data_path);
-//      MPI_Abort(MPI_COMM_WORLD, 1);
-//    }
-//  }
+  if (mpi_rank == 0) {
+    struct stat sb;
+    if (!(stat(metadata_path, &sb) == 0 && S_ISDIR(sb.st_mode))) {
+      fprintf(stderr, "Metadata data path %s does not exist.\n", metadata_path);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    if (!(stat(data_path, &sb) == 0 && S_ISDIR(sb.st_mode))) {
+      fprintf(stderr, "Data path %s does not exist.\n", data_path);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+  }
 
   // create bucket
   *bucket = malloc(sizeof(container));

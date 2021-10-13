@@ -159,16 +159,19 @@ static void create_hdf5_vds(const container* bucket,
     case FLOAT: {
       vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_FLOAT, vds_dataspace,
                        H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
       break;
     }
     case DOUBLE: {
       vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_DOUBLE, vds_dataspace,
                        H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
       break;
     }
     case INT: {
       vds = H5Dcreate2(vds_file, "vds", H5T_NATIVE_INT, vds_dataspace,
                        H5P_DEFAULT, dcpl, H5P_DEFAULT);
+      assert(vds >= 0);
       break;
     }
     default:
@@ -192,6 +195,23 @@ NoaMetadata* noa_create_metadata(const container* bucket,
                                  const long* chunk_dims)
 
 {
+  if (bucket->mpi_rank == 0) {
+    // check if object exists
+    size_t metadata_file_path_len = strlen(bucket->key_value_store) +
+                                    strlen(bucket->name) +
+                                    strlen(object_name) + 4 + 3;
+    char* metadata_file_path =
+        (char*)malloc(sizeof(char) * metadata_file_path_len);
+    snprintf(metadata_file_path, metadata_file_path_len, "%s/%s-%s.bin",
+             bucket->key_value_store, bucket->name, object_name);
+    if( access(metadata_file_path, F_OK ) != -1) {
+      fprintf(stderr, "Error: object with name %s already exist and is immutable\n", metadata_file_path);
+      free(metadata_file_path);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    free(metadata_file_path);
+  }
+
   // check if chunking aligns with proc
   int world_size;
   int num_proc_needed = 1;
@@ -282,7 +302,7 @@ int noa_put_metadata(const container* bucket,
         exit(1);
     }
 
-    // prepare to sealized protobuf
+    // prepare to sealized protobu
     unsigned serialized_metadata_size =
         noa_metadata__get_packed_size(object_metadata);
     void* seralized_metadata_buffer = malloc(serialized_metadata_size);

@@ -80,15 +80,22 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     # build example app
     add_executable(app.out ${APP_SRC})
     target_compile_options(app.out PUBLIC -O3 -Wall)
+    # add mero def
+    if(USE_MERO)
+        target_compile_definitions(noa PRIVATE USE_MERO)
+    endif()
+
     target_link_libraries(app.out PUBLIC
         ${PROTO-C_LINK_LIBRARIES}
         noa
         MPI::MPI_C)
+
     target_include_directories(app.out PUBLIC
         ${PROTO-C_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         include) 
+
 endif()
 
 message("MPI include path:  ${MPI_C_INCLUDE_DIRS}")

@@ -41,7 +41,12 @@ int main(int argc, char* argv[]) {
   };  // 1x2x2
 
   NoaMetadata* metadata =
-      noa_create_metadata(bucket, "testObject", DOUBLE, HDF5, POSIX,
+      noa_create_metadata(bucket, "testObject", DOUBLE, HDF5,
+#ifdef USE_MERO
+                          MERO,
+#else
+                          POSIX,
+#endif
                           sizeof(dims) / sizeof(long), dims, chunk_dims);
   printf("dimensionality: %ld\n", metadata->n_dims);
   printf("dims: %ld %ld\n", metadata->dims[0], metadata->dims[1]);

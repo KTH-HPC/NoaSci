@@ -132,7 +132,6 @@ int put_object_chunk_hdf5(const container *bucket,
     int rc = 0;
     void *buffer = NULL;
     MPI_Request mpi_req;
-    MPI_Status mpi_status;
 
     size_t imgSize = H5Fget_file_image(file, NULL, 0);
     if (bucket->mpi_rank == 0) {
@@ -147,7 +146,7 @@ int put_object_chunk_hdf5(const container *bucket,
 
     buffer = malloc(imgSize);
     H5Fget_file_image(file, buffer, imgSize);
-    MPI_Wait(&mpi_req, &mpi_status);
+    MPI_Wait(&mpi_req, MPI_STATUS_IGNORE);
 
     rc = aoi_create_object(high_id, bucket->mpi_rank);
     if (rc) {
@@ -181,7 +180,9 @@ int get_object_chunk_hdf5(const container *bucket,
   hid_t status, file, dataset;
   int rc = 0;
 #ifdef USE_MERO
-  uint64_t high_id, num, size;
+  uint64_t high_id;
+  uint64_t num_and_size[2];
+  MPI_Request high_id_req, size_req;
 #endif
 
   size_t chunk_path_len = strlen(bucket->object_store) +
@@ -202,22 +203,24 @@ int get_object_chunk_hdf5(const container *bucket,
       break;
 #ifdef USE_MERO
     case MERO:
-        if (bucket->chunk_id == 0) {
+        if (bucket->mpi_rank == 0) {
                 size_t total_length = 0;
-                rc = aoi_get_object_metadata(object_metadata->id, &high_id, &num, &size);
+                rc = aoi_get_object_metadata(object_metadata->id, &high_id, &num_and_size[0], &num_and_size[1]);
                 if (rc) { fprintf(stderr, "GET: Failed to get metadata!\n"); return rc; }
         }
-        MPI_Bcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-        MPI_Bcast(&num, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-        MPI_Bcast(&size, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        MPI_Icast(num_and_size, 2, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+        MPI_Icast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
 
-        void *buffer = malloc(size * num);
+        MPI_Wait(&size_req, MPI_STATUS_IGNORE);
+        size_t total_buffer_size = num_and_size[0] * num_and_size[1];
+        void *buffer = malloc(total_size);
         if (buffer == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
 
-        rc = aoi_read_object(high_id, bucket->mpi_rank, buffer, size * num);
+        MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
+        rc = aoi_read_object(high_id, chunk_id, buffer, total_buffer_size);
         if (rc) { free(buffer); fprintf(stderr, "GET: Fail to get object data!\n"); }
 
-        file = H5LTopen_file_image(buffer, size * num, H5LT_FILE_IMAGE_DONT_COPY | H5LT_FILE_IMAGE_OPEN_RW/* | H5LT_FILE_IMAGE_DONT_RELEASE*/);
+        file = H5LTopen_file_image(buffer, total_buffer_size, H5LT_FILE_IMAGE_DONT_COPY | H5LT_FILE_IMAGE_OPEN_RW/* | H5LT_FILE_IMAGE_DONT_RELEASE*/);
       break;
 #endif
     default:

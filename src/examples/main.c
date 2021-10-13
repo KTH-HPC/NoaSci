@@ -20,7 +20,6 @@ int main(int argc, char* argv[]) {
   snprintf(mero_filename, 265, "./sagerc_%s", hostname);
   noa_init(mero_filename, 4096, world_rank, 0);
 
-
   const char* metadata_path = "./metadata";
   const char* data_path = "./data";
   const char* container_name = "testcontainer";
@@ -29,23 +28,18 @@ int main(int argc, char* argv[]) {
   int rc;
   rc = noa_container_open(&bucket, container_name, metadata_path, data_path);
 
-  //    printf("metadata_path:   %s\n", bucket->name);
-  //    printf("key_value_store: %s\n", bucket->key_value_store);
-  //    printf("object_store:    %s\n", bucket->object_store);
-  //
-
-  // long dims[]       = { 2, 4, 8 };
-  // long chunk_dims[] = { 2, 2, 4 }; // 1x2x2
   long dims[] = {
       1,
       1024,
       1024,
   };
+
   long chunk_dims[] = {
       1,
       512,
       512,
   };  // 1x2x2
+
   NoaMetadata* metadata =
       noa_create_metadata(bucket, "testObject", DOUBLE, HDF5, POSIX,
                           sizeof(dims) / sizeof(long), dims, chunk_dims);
@@ -64,13 +58,13 @@ int main(int argc, char* argv[]) {
   }
 
   data = malloc(sizeof(double) * total_size);
+  double counter = 0.0;
   for (int k = 0; k < chunk_dims[2]; k++) {
     for (int j = 0; j < chunk_dims[1]; j++) {
       for (int i = 0; i < chunk_dims[0]; i++) {
         // data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] =
         // (double)(k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i);
-        data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] =
-            bucket->mpi_rank;
+        data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] = counter++;
       }
     }
   }
@@ -107,12 +101,8 @@ int main(int argc, char* argv[]) {
             double original = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
             double retrieved = data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
             if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
-            //printf("%f ", data[k * chunk_dims[1] * chunk_dims[0] +
-            //                   j * chunk_dims[0] + i]);
           }
-          //printf("\n");
         }
-        //printf("%d next layer...\n", bucket->mpi_rank);
       }
     }
     MPI_Barrier(MPI_COMM_WORLD);

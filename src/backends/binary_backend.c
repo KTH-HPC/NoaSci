@@ -83,7 +83,7 @@ int put_object_chunk_binary(const container *bucket,
                             const size_t offset, const char *header) {
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
-  size_t total_file_size;
+  size_t total_file_size = 1;
   size_t chunk_path_len =
       strlen(bucket->object_store) + strlen(object_metadata->id) +
       snprintf(NULL, 0, "%d.%s", bucket->mpi_rank, suffix) + 3;
@@ -120,7 +120,7 @@ int get_object_chunk_binary(const container *bucket,
 
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
-  size_t total_file_size;
+  size_t total_file_size = 1;
   size_t chunk_path_len =
       strlen(bucket->object_store) + strlen(object_metadata->id) +
       snprintf(NULL, 0, "%d.%s", chunk_id, suffix) + 3;

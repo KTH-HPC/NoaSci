@@ -24,8 +24,11 @@ int put_object_chunk_hdf5(const container *bucket,
            object_metadata->id, bucket->mpi_rank);
 
   hsize_t dims[object_metadata->n_dims];
-  hid_t file, dataspace, dataset, fapl;
+  hid_t file, dataspace, dataset;
   herr_t status;
+#ifdef USE_MERO
+  hid_t fapl;
+#endif
 
   // create file/object on backend
   switch (object_metadata->backend) {
@@ -104,15 +107,21 @@ int put_object_chunk_hdf5(const container *bucket,
                   header_attribute_space, H5P_DEFAULT, H5P_DEFAULT);
     assert(header_attribute >= 0);
     status = H5Awrite(header_attribute, header_attribute_type, header);
+    assert(status >= 0);
     status = H5Aclose(header_attribute);
+    assert(status >= 0);
 
     status = H5Sclose(header_attribute_space);
+    assert(status >= 0);
     status = H5Tclose(header_attribute_type);
+    assert(status >= 0);
   }
 
   // clean up attributes
   status = H5Dclose(dataset);
+  assert(status >= 0);
   status = H5Sclose(dataspace);
+  assert(status >= 0);
 
   // close object on backend
   if (object_metadata->backend == MERO) {
@@ -161,6 +170,7 @@ int put_object_chunk_hdf5(const container *bucket,
   }
 
   status = H5Fclose(file);
+  assert(status >= 0);
   free(chunk_path);
   return 0;
 }
@@ -170,7 +180,9 @@ int get_object_chunk_hdf5(const container *bucket,
                           char **header, int chunk_id) {
   hid_t status, file, dataset;
   int rc = 0;
+#ifdef USE_MERO
   uint64_t high_id, num, size;
+#endif
 
   size_t chunk_path_len = strlen(bucket->object_store) +
                           strlen(object_metadata->id) +
@@ -218,16 +230,19 @@ int get_object_chunk_hdf5(const container *bucket,
       *data = (double*)malloc(sizeof(double) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
                        H5P_DEFAULT, (double*)*data);
+      assert(status >= 0);
       break;
     case FLOAT:
       *data = (float*)malloc(sizeof(float) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
                        (float*)*data);
+      assert(status >= 0);
       break;
     case INT:
       *data = (int*)malloc(sizeof(int) * total_size);
       status = H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
                        (int*)*data);
+      assert(status >= 0);
       break;
     default:
       fprintf(stderr, "Datatype undefined\n");
@@ -243,6 +258,7 @@ int get_object_chunk_hdf5(const container *bucket,
     *header = (char*)malloc(header_size);
     status =
         H5Aread(header_attribute, header_attribute_type, (void *)(*header));
+    assert(status >= 0);
   }
 
   H5Dclose(dataset);

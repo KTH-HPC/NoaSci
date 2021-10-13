@@ -108,14 +108,17 @@ static void create_hdf5_vds(const container* bucket,
     case FLOAT: {
       float fill_value = -65535.0;
       status = H5Pset_fill_value(dcpl, H5T_NATIVE_FLOAT, &fill_value);
+      assert(status >= 0);
     } break;
     case DOUBLE: {
       double fill_value = -65535.0;
       status = H5Pset_fill_value(dcpl, H5T_NATIVE_DOUBLE, &fill_value);
+      assert(status >= 0);
     } break;
     case INT: {
       int fill_value = -65535;
       status = H5Pset_fill_value(dcpl, H5T_NATIVE_INT, &fill_value);
+      assert(status >= 0);
     } break;
     default:
       fprintf(stderr, "invalid datatype\n");
@@ -145,8 +148,10 @@ static void create_hdf5_vds(const container* bucket,
     snprintf(chunk_path, chunk_path_len, "%s-%d.h5", object_metadata->id, i);
     status = H5Sselect_hyperslab(vds_dataspace, H5S_SELECT_SET, start, NULL,
                                  count, block);
+    assert(status >= 0);
     status =
         H5Pset_virtual(dcpl, vds_dataspace, chunk_path, "data", src_dataspace);
+    assert(status >= 0);
   }
 
   /* link to virtual dataset */
@@ -189,7 +194,6 @@ NoaMetadata* noa_create_metadata(const container* bucket,
 {
   // check if chunking aligns with proc
   int world_size;
-  long* proc_dims[dimensionality];
   int num_proc_needed = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
   for (int i = 0; i < dimensionality; i++)
@@ -363,6 +367,7 @@ NoaMetadata* noa_get_metadata(const container* bucket,
 
   rc = read_binary_file(metadata_file_path, &seralized_metadata_buffer,
                         &serialized_metadata_size);
+  assert (rc == 0);
   NoaMetadata* object_metadata = noa_metadata__unpack(
       NULL, serialized_metadata_size, seralized_metadata_buffer);
 

@@ -13,7 +13,6 @@ endif()
 
 option(USE_MERO "Build Mero Object Store Backend" OFF)
 
-find_package(OpenMP)
 find_package(MPI REQUIRED)
 find_package(HDF5 COMPONENTS C HL)
 find_package(protobuf-c COMPONENTS C)
@@ -46,7 +45,7 @@ set(APP_SRC
     src/examples/main.c
 )
 
-if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
+if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     # build libaoi
     add_library(noa SHARED ${NOA_SRC})
 
@@ -56,7 +55,6 @@ if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${PROTO-C_LINK_LIBRARIES}
         ${HDF5_C_LIBRARIES}
         ${HDF5_HL_LIBRARIES}
-        OpenMP::OpenMP_C
         MPI::MPI_C)
 
     # header files including the generated proto
@@ -77,13 +75,13 @@ if(OpenMP_C_FOUND AND MPI_CXX_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     endif()
 
     # PIC for shared library
-    set_property(TARGET noa PROPERTY POSITION_INDEPENDENT_CODE ON)
-    target_compile_options(noa PRIVATE -O3)
+    target_compile_options(noa PRIVATE -O3 -fPIC -Wall)
 
     # build example app
     add_executable(app.out ${APP_SRC})
-    target_compile_options(app.out PUBLIC -O3 ${ARCH})
+    target_compile_options(app.out PUBLIC -O3 -Wall)
     target_link_libraries(app.out PUBLIC
+        ${PROTO-C_LINK_LIBRARIES}
         noa
         MPI::MPI_C)
     target_include_directories(app.out PUBLIC

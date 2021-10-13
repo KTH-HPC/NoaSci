@@ -8,6 +8,6 @@ int put_object_chunk_hdf5(const container *bucket,
                           const size_t offset, const char *header);
 int get_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, void **data,
-                          char **header);
+                          char **header, int chunk_id);
 
 #endif

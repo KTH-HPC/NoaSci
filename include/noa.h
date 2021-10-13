@@ -48,8 +48,9 @@ int noa_container_close(container *bucket);
 // Object operations for one chunk per process
 int noa_put_chunk(const container *bucket, const NoaMetadata *object_metadata,
                   const void *data, const size_t offset, const char *header);
+// get chunk with custom chunk ID (rather than rank)
 int noa_get_chunk(const container *bucket, const NoaMetadata *object_metadata,
-                  void **data, char **header);
+                  void **data, char **header, int chunk_id/*mpi rank*/);
 
 int noa_delete(const container *bucket, NoaMetadata *object_metadata);
 

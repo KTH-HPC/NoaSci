@@ -167,20 +167,19 @@ int put_object_chunk_hdf5(const container *bucket,
 
 int get_object_chunk_hdf5(const container *bucket,
                           const NoaMetadata *object_metadata, void **data,
-                          char **header) {
+                          char **header, int chunk_id) {
   hid_t status, file, dataset;
   int rc = 0;
   uint64_t high_id, num, size;
 
   size_t chunk_path_len = strlen(bucket->object_store) +
                           strlen(object_metadata->id) +
-                          snprintf(NULL, 0, "%d", bucket->mpi_rank) + 7;
+                          snprintf(NULL, 0, "%d", chunk_id) + 7;
   char *chunk_path = malloc(sizeof(char) * chunk_path_len);
   snprintf(chunk_path, chunk_path_len, "%s/%s-%d.h5", bucket->object_store,
-           object_metadata->id, bucket->mpi_rank);
+           object_metadata->id, chunk_id);
 
   size_t total_size = 1;
-#pragma omp parallel for reduction(*:total_size)
   for (int i = 0; i < object_metadata->n_dims; i++) {
     total_size = total_size * object_metadata->chunk_dims[i];
   }
@@ -191,7 +190,7 @@ int get_object_chunk_hdf5(const container *bucket,
       break;
 #ifdef USE_MERO
     case MERO:
-        if (bucket->mpi_rank == 0) {
+        if (bucket->chunk_id == 0) {
                 size_t total_length = 0;
                 rc = aoi_get_object_metadata(object_metadata->id, &high_id, &num, &size);
                 if (rc) { fprintf(stderr, "GET: Failed to get metadata!\n"); return rc; }

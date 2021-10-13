@@ -38,21 +38,25 @@ int noa_put_chunk(const container* bucket, const NoaMetadata* object_metadata,
 }
 
 int noa_get_chunk(const container* bucket, const NoaMetadata* object_metadata,
-                  void** data, char** header) {
+                  void** data, char** header, int chunk_id) {
   int rc = 0;
+  if (chunk_id < 0) {
+    chunk_id = bucket->mpi_rank;
+    fprintf(stderr, "Note: Setting chunk ID to MPI rank %d since it is -ve.\n", chunk_id);
+  }
 
   switch (object_metadata->backend_format) {
     case BINARY:
       rc =
-          get_object_chunk_binary(bucket, object_metadata, "bin", data, header);
+          get_object_chunk_binary(bucket, object_metadata, "bin", data, header, chunk_id);
       break;
     case HDF5:
-      rc = get_object_chunk_hdf5(bucket, object_metadata, data, header);
+      rc = get_object_chunk_hdf5(bucket, object_metadata, data, header, chunk_id);
       break;
     case VTK:
       // reuse the binary backend for now
       rc =
-          get_object_chunk_binary(bucket, object_metadata, "vtk", data, header);
+          get_object_chunk_binary(bucket, object_metadata, "vtk", data, header, chunk_id);
       break;
     default:
       fprintf(stderr, "Error: Unknown backend data format!\n");

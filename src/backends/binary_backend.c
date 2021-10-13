@@ -115,19 +115,18 @@ int put_object_chunk_binary(const container *bucket,
 
 int get_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
-                            const char *suffix, void **data, char **header) {
-  if (header != NULL)
-    fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
+                            const char *suffix, void **data, char **header, int chunk_id) {
+  fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
 
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
   size_t total_file_size;
   size_t chunk_path_len =
       strlen(bucket->object_store) + strlen(object_metadata->id) +
-      snprintf(NULL, 0, "%d.%s", bucket->mpi_rank, suffix) + 3;
+      snprintf(NULL, 0, "%d.%s", chunk_id, suffix) + 3;
   char *chunk_path = malloc(sizeof(char) * chunk_path_len);
   snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
-           object_metadata->id, bucket->mpi_rank, suffix);
+           object_metadata->id, chunk_id, suffix);
 
   switch (object_metadata->datatype) {
     case INT:

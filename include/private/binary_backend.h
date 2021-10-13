@@ -9,6 +9,6 @@ int put_object_chunk_binary(const container *bucket,
                             const size_t offset, const char *header);
 int get_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
-                            const char *suffix, void **data, char **header);
+                            const char *suffix, void **data, char **header, int chunk_id);
 
 #endif

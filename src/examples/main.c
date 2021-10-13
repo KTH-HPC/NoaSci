@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
 
   metadata = noa_get_metadata(bucket, "testObject");
   char* get_header;
-  rc = noa_get_chunk(bucket, metadata, (void**)&data, &get_header);
+  rc = noa_get_chunk(bucket, metadata, (void**)&data, &get_header, bucket->mpi_rank);
   printf("get header: %s\n", get_header);
 
   // rc = noa_free_metadata(bucket, metadata);

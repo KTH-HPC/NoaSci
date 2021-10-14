@@ -66,6 +66,8 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         list(REMOVE_ITEM MOTR_CFLAGS "-includeconfig.h")
         list(APPEND MOTR_CFLAGS -include/usr/include/motr/config.h)
         target_compile_options(noa_motr PUBLIC -fPIC)
+        #target_compile_definitions(noa_motr PRIVATE DEBUG)
+        target_compile_definitions(noa_motr PUBLIC USE_MERO)
         target_compile_options(noa_motr PRIVATE
                                ${MOTR_CFLAGS})
     endif()
@@ -106,7 +108,7 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     target_compile_options(app.out PUBLIC -O3 -Wall)
     # add mero def
     if(USE_MERO)
-        target_compile_definitions(noa PRIVATE USE_MERO)
+        target_compile_definitions(app.out PRIVATE USE_MERO)
     endif()
 
     target_link_libraries(app.out PUBLIC

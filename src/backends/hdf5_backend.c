@@ -329,7 +329,7 @@ int get_object_chunk_hdf5(const container *bucket,
 
         MPI_Wait(&num_and_size_req, MPI_STATUS_IGNORE);
         size_t total_buffer_size = num_and_size[0] * num_and_size[1];
-        void *buffer = malloc(total_size);
+        void *buffer = malloc(total_buffer_size);
         if (buffer == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
 
         MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);

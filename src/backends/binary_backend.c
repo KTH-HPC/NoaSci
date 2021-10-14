@@ -91,6 +91,9 @@ int put_object_chunk_binary(const container *bucket,
 #ifdef USE_MERO
   uint64_t high_id;
   int rc = 0;
+  size_t buffer_with_header_size = 0;
+  void *buffer_with_header = NULL;
+  MPI_Request high_id_req;
 #endif
 
   // compute total size with data type
@@ -130,9 +133,19 @@ int put_object_chunk_binary(const container *bucket,
       break;
     case MERO:
 #ifdef USE_MERO
+      if (header != NULL) {
+        // if header is provided, we need to adjust the size
+        buffer_with_header_size = sizeof(char)*strlen(header) + sizeof(void)*total_file_size;
+      }
+      else {
+        // if header is not provided, we keep what we have and reuse the buffer
+        buffer_with_header_size = total_file_size;
+        buffer_with_header = data;
+      }
+
       // rank zero creates metadata object and generate high ID
-      if (bucket->mpi_rank) {
-        rc = motr_create_object_metadata(object_metadata->id, &high_id, total_file_size, sizeof(void));
+      if (bucket->mpi_rank == 0) {
+        rc = motr_create_object_metadata(object_metadata->id, &high_id, buffer_with_header_size, sizeof(void));
         if (rc) {
           fprintf(stderr, "PUT: Failed to create metadata!\n");
           return rc;
@@ -140,7 +153,17 @@ int put_object_chunk_binary(const container *bucket,
       }
 
       // broadcast high ID
-      MPI_Bcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+      MPI_Ibcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD, &high_id_req);
+
+      if (header != NULL) {
+        // if we have a header, we need to merge the two buffers
+        // TODO in nao_motr to write to the same object with offset
+        buffer_with_header = malloc(buffer_with_header_size);
+        memcpy(buffer_with_header, header, sizeof(char)*strlen(header));
+        memcpy(buffer_with_header + sizeof(char)*strlen(header), data, total_file_size * sizeof(void));
+      }
+
+      MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
       rc = motr_create_object(high_id, bucket->mpi_rank);
       if (rc) {
         motr_delete_object(high_id, bucket->mpi_rank);
@@ -149,12 +172,14 @@ int put_object_chunk_binary(const container *bucket,
       }
 
       // write object to mero
-      rc = motr_write_object(high_id, bucket->mpi_rank, (char *)data, total_file_size);
+      rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer_with_header, buffer_with_header_size);
       if (rc) {
         motr_delete_object(high_id, bucket->mpi_rank);
         fprintf(stderr, "PUT: Failed to write data!\n");
         return rc;
       }
+
+      if (buffer_with_header != NULL) free(buffer_with_header);
 #else
       fprintf(stderr, "Error: Meror not supported!\n");
 #endif

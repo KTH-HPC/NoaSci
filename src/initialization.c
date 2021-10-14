@@ -56,28 +56,23 @@ printf("opening %s...\n", mero_config_filename);
     sscanf(line_buffer, "%s = %s", key_string_buffer, value_string_buffer);
     if (strcmp(key_string_buffer, m0_pool_tier_name) == 0) {
       strcpy(m0_pool_tier, value_string_buffer);
-printf("%s\n", m0_pool_tier);
     }
     else if (strcmp(key_string_buffer, ha_endpoint_addr_name) == 0) {
       strcpy(ha_endpoint_addr, value_string_buffer);
-printf("%s\n", ha_endpoint_addr);
     }
     else if (strcmp(key_string_buffer, local_endpoint_addr_name) == 0) {
       strcpy(local_endpoint_addr, value_string_buffer);
-printf("%s\n", local_endpoint_addr);
     }
     else if (strcmp(key_string_buffer, profile_fid_name) == 0) {
       strcpy(profile_fid, value_string_buffer);
-printf("%s\n", profile_fid);
     }
     else if (strcmp(key_string_buffer, local_proc_fid_name) == 0) {
       strcpy(local_proc_fid, value_string_buffer);
-printf("%s\n", local_proc_fid);
     }
   }
   fclose(fp);
 
-  printf("Mero Local Endpoint Address: %s HA Endpoint Address: %s Profile FID: %s Local Proc FID: %s\n", local_endpoint_addr, ha_endpoint_addr, profile_fid, local_proc_fid);
+  fprintf(stderr, "Info: Mero Local Endpoint Address: %s HA Endpoint Address: %s Profile FID: %s Local Proc FID: %s\n", local_endpoint_addr, ha_endpoint_addr, profile_fid, local_proc_fid);
 
   int rc = motr_init(local_endpoint_addr, ha_endpoint_addr, profile_fid,
                     local_proc_fid, block_size, tier);

@@ -119,9 +119,9 @@ int motr_init(char *laddr, char *ha_addr, char *prof_id, char *proc_fid,
 	}
 	//tier_selection = tier;
 	// TODO not hardcode
-	m0_fid_sscanf("0x6f00000000000001:0x23d", TIERS[1]);
-	m0_fid_sscanf("0x6f00000000000001:0x24a", TIERS[2]);
-	m0_fid_sscanf("0x6f00000000000001:0x257", TIERS[3]);
+	m0_fid_sscanf("0x6f00000000000001:0x239", TIERS[1]);
+	m0_fid_sscanf("0x6f00000000000001:0x246", TIERS[2]);
+	m0_fid_sscanf("0x6f00000000000001:0x253", TIERS[3]);
 
 	rc = m0_client_init(&clovis_instance, &clovis_conf, true);
 
@@ -438,28 +438,29 @@ motr_read_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length)
 #ifdef DEBUG
 		fprintf(stderr, "cnt: %ld , block_count: %d\n", cnt, block_count);
 #endif
+	rc = m0_indexvec_alloc(&ext, block_count);
+	if (rc) return rc;
+
+	rc = m0_bufvec_alloc(&data, block_count, clovis_block_size);
+	if (rc) { m0_indexvec_free(&ext); return rc; };
+
+	rc = m0_bufvec_alloc(&attr, block_count, 1);
+	if (rc) { m0_bufvec_free(&data); m0_indexvec_free(&ext); return rc; }
+
 	while (cnt < n_full_blocks) {
-#ifdef DEBUG
-		fprintf(stderr, "cnt: %ld , block_count: %d\n", cnt, block_count);
-#endif
-		rc = m0_indexvec_alloc(&ext, block_count);
-		if (rc) return rc;
-#ifdef DEBUG
-		fprintf(stderr, "indexvec alloc ext\n");
-#endif
+		if (block_count != MAX_BLOCK_CNT_PER_OP) {
+			m0_bufvec_free(&attr);
+			m0_bufvec_free(&data);
+			m0_indexvec_free(&ext);
 
-		rc = m0_bufvec_alloc(&data, block_count, clovis_block_size);
-		if (rc) { m0_indexvec_free(&ext); return rc; }
+			rc = m0_indexvec_alloc(&ext, block_count);
+			if (rc) return rc;
+			rc = m0_bufvec_alloc(&data, block_count, clovis_block_size);
+			if (rc) { m0_indexvec_free(&ext); return rc; };
+			rc = m0_bufvec_alloc(&attr, block_count, 1);
+			if (rc) { m0_bufvec_free(&data); m0_indexvec_free(&ext); return rc; }
+		}
 
-#ifdef DEBUG
-		fprintf(stderr, "bufvec alloc data\n");
-#endif
-		rc = m0_bufvec_alloc(&attr, block_count, 1);
-		if (rc) { m0_indexvec_free(&ext); m0_bufvec_free(&data); return rc; }
-
-#ifdef DEBUG
-		fprintf(stderr, "buf vec alloc attr\n");
-#endif
 		for (i = 0; i < block_count; i++) {
 			ext.iv_index[i] = byte_count;
 			ext.iv_vec.v_count[i] = clovis_block_size;
@@ -624,9 +625,16 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 #endif
 	}
 
-#ifdef DEBUG
-	printf("Object creation successful\n\n");
-#endif
+//#ifdef DEBUG
+//	printf("Object creation successful\n\n");
+        void *verify_data = malloc(length);
+        rc = motr_read_object(high_id, low_id, verify_data, length);
+	char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
+	FILE *fp = fopen(path_buf, "wb");
+	fwrite(verify_data, sizeof(void), length, fp);
+	fclose(fp);
+	free(verify_data);
+//#endif
 	return rc;
 }
 

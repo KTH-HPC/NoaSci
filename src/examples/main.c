@@ -18,7 +18,8 @@ int main(int argc, char* argv[]) {
 
   char mero_filename[265];
   snprintf(mero_filename, 265, "./sagerc_%s", hostname);
-  noa_init(mero_filename, 4096, world_rank, 0);
+printf("rank: %d\n", world_rank %4);
+  noa_init(mero_filename, 4096, world_rank%4, 0);
 
   const char* metadata_path = "./metadata";
   const char* data_path = "./data";
@@ -30,18 +31,18 @@ int main(int argc, char* argv[]) {
 
   long dims[] = {
       16,
-      4096,
-      4096,
+      256,
+      256,
   };
 
   long chunk_dims[] = {
       16,
-      2048,
-      2048,
+      128,
+      128,
   };  // 1x2x2
 
   NoaMetadata* metadata =
-      noa_create_metadata(bucket, "testObject", DOUBLE, VTK,
+      noa_create_metadata(bucket, "testObject", DOUBLE, BINARY,
 #ifdef USE_MERO
                           MERO,
 #else

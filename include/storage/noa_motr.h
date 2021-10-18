@@ -17,6 +17,8 @@ extern "C" {
 
 typedef unsigned long uint64_t;
 
+uint64_t hex_to_uint64(char const *str);
+
 int motr_create_object_metadata(const char *object_name, uint64_t *high_id, const size_t num, const size_t size);
 
 int motr_get_object_metadata(const char *object_name, uint64_t *high_id, size_t *num, size_t *size);

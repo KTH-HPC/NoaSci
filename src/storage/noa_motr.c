@@ -51,7 +51,7 @@ static struct m0_fid *const TIERS[] = {
 
 static const size_t N_TIER = sizeof(TIERS) / sizeof(TIERS[0]);
 
-static uint64_t hex_to_uint64(char const *str)
+uint64_t hex_to_uint64(char const *str)
 {
 	uint64_t accumulator = 0;
 	for (size_t i = 0 ; isxdigit((unsigned char)str[i]) ; ++i) {
@@ -119,9 +119,9 @@ int motr_init(char *laddr, char *ha_addr, char *prof_id, char *proc_fid,
 	}
 	//tier_selection = tier;
 	// TODO not hardcode
-	m0_fid_sscanf("0x6f00000000000001:0x239", TIERS[1]);
-	m0_fid_sscanf("0x6f00000000000001:0x246", TIERS[2]);
-	m0_fid_sscanf("0x6f00000000000001:0x253", TIERS[3]);
+	m0_fid_sscanf("0x6f00000000000001:0x237", TIERS[1]);
+	m0_fid_sscanf("0x6f00000000000001:0x244", TIERS[2]);
+	m0_fid_sscanf("0x6f00000000000001:0x251", TIERS[3]);
 
 	rc = m0_client_init(&clovis_instance, &clovis_conf, true);
 

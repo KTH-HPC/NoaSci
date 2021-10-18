@@ -11,7 +11,32 @@
 
 #include "noa.h"
 #include "private/binary_backend.h"
-#include "private/hdf5_backend.h"
+#include "private/binary_backend.h"
+#include "storage/noa_motr.h"
+
+int noa_put_chunk_by_id(const container* bucket, const NoaMetadata* object_metadata,
+                        const int chunk_id, const void* data, const size_t offset, const char* header) {
+  int rc = 0;
+
+  switch (object_metadata->backend_format) {
+    case BINARY:
+      rc = put_object_chunk_binary_by_id(bucket, object_metadata, chunk_id, "bin", data, offset,
+                                         header);
+      break;
+    case HDF5:
+      fprintf(stderr, "Error: put_object_chunk_hdf5_by_id() unimplemented!\n");
+      break;
+    case VTK:
+      // reuse the binary backend for now
+      rc = put_object_chunk_binary_by_id(bucket, object_metadata, chunk_id, "vtk", data, offset,
+                                         header);
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown backend data format!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+  return rc;
+}
 
 int noa_put_chunk(const container* bucket, const NoaMetadata* object_metadata,
                   const void* data, const size_t offset, const char* header) {
@@ -124,80 +149,98 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
       return -1;
     }
 
-    // delete actualy data
-    size_t chunk_path_len;
-    char* chunk_path;
-    switch (object_metadata->backend_format) {
-      case HDF5:
-        // delete data
-        chunk_path_len =
-            strlen(bucket->object_store) + strlen(object_metadata->id) +
-            snprintf(NULL, 0, "-%d.h5", object_metadata->num_chunks) + 3;
-        chunk_path = malloc(sizeof(char) * chunk_path_len);
-        for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
-             chunk_id++) {
-          snprintf(chunk_path, chunk_path_len, "%s/%s-%d.h5",
-                   bucket->object_store, object_metadata->id, chunk_id);
+    if (object_metadata->backend == MERO) {
+      uint64_t high_id;
+      size_t num, size;
+      rc = motr_get_object_metadata(object_metadata->id, &high_id, &num, &size);
+      for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
+           chunk_id++) {
+        rc = motr_delete_object(high_id, chunk_id);
+        assert(rc == 0);
+      }
+      rc = motr_delete_object(high_id, _METADATA_CHUNK_ID);
+      assert(rc == 0);
+    }
+    else if (object_metadata->backend == POSIX) {
+      // delete actualy data
+      size_t chunk_path_len;
+      char* chunk_path;
+      switch (object_metadata->backend_format) {
+        case HDF5:
+          // delete data
+          chunk_path_len =
+              strlen(bucket->object_store) + strlen(object_metadata->id) +
+              snprintf(NULL, 0, "-%d.h5", object_metadata->num_chunks) + 3;
+          chunk_path = malloc(sizeof(char) * chunk_path_len);
+          for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
+               chunk_id++) {
+            snprintf(chunk_path, chunk_path_len, "%s/%s-%d.h5",
+                     bucket->object_store, object_metadata->id, chunk_id);
+            rc = remove(chunk_path);
+            if (rc < 0) {
+              fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
+                      chunk_path);
+              MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+          }
+
+          // delete vds
+          snprintf(chunk_path, chunk_path_len, "%s/%s.h5", bucket->object_store,
+                   object_metadata->id);
           rc = remove(chunk_path);
           if (rc < 0) {
-            fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
-                    chunk_path);
+            fprintf(stderr, "Error: Unable to delete VDS: %s\n", chunk_path);
             MPI_Abort(MPI_COMM_WORLD, 1);
           }
-        }
 
-        // delete vds
-        snprintf(chunk_path, chunk_path_len, "%s/%s.h5", bucket->object_store,
-                 object_metadata->id);
-        rc = remove(chunk_path);
-        if (rc < 0) {
-          fprintf(stderr, "Error: Unable to delete VDS: %s\n", chunk_path);
+          free(chunk_path);
+          break;
+        case BINARY:
+          // delete data
+          chunk_path_len =
+              strlen(bucket->object_store) + strlen(object_metadata->id) +
+              snprintf(NULL, 0, "-%d.bin", object_metadata->num_chunks) + 3;
+          chunk_path = malloc(sizeof(char) * chunk_path_len);
+          for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
+               chunk_id++) {
+            snprintf(chunk_path, chunk_path_len, "%s/%s-%d.bin",
+                     bucket->object_store, object_metadata->id, chunk_id);
+            rc = remove(chunk_path);
+            if (rc < 0) {
+              fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
+                      chunk_path);
+              MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+          }
+          free(chunk_path);
+          break;
+        case VTK:
+          // delete data
+          chunk_path_len =
+              strlen(bucket->object_store) + strlen(object_metadata->id) +
+              snprintf(NULL, 0, "-%d.vtk", object_metadata->num_chunks) + 3;
+          chunk_path = malloc(sizeof(char) * chunk_path_len);
+          for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
+               chunk_id++) {
+            snprintf(chunk_path, chunk_path_len, "%s/%s-%d.vtk",
+                     bucket->object_store, object_metadata->id, chunk_id);
+            rc = remove(chunk_path);
+            if (rc < 0) {
+              fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
+                      chunk_path);
+              MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+          }
+          free(chunk_path);
+          break;
+        default:
+          fprintf(stderr, "Error: Unknown backend format!\n");
           MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-
-        free(chunk_path);
-        break;
-      case BINARY:
-        // delete data
-        chunk_path_len =
-            strlen(bucket->object_store) + strlen(object_metadata->id) +
-            snprintf(NULL, 0, "-%d.bin", object_metadata->num_chunks) + 3;
-        chunk_path = malloc(sizeof(char) * chunk_path_len);
-        for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
-             chunk_id++) {
-          snprintf(chunk_path, chunk_path_len, "%s/%s-%d.bin",
-                   bucket->object_store, object_metadata->id, chunk_id);
-          rc = remove(chunk_path);
-          if (rc < 0) {
-            fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
-                    chunk_path);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-          }
-        }
-        free(chunk_path);
-        break;
-      case VTK:
-        // delete data
-        chunk_path_len =
-            strlen(bucket->object_store) + strlen(object_metadata->id) +
-            snprintf(NULL, 0, "-%d.vtk", object_metadata->num_chunks) + 3;
-        chunk_path = malloc(sizeof(char) * chunk_path_len);
-        for (int chunk_id = 0; chunk_id < object_metadata->num_chunks;
-             chunk_id++) {
-          snprintf(chunk_path, chunk_path_len, "%s/%s-%d.vtk",
-                   bucket->object_store, object_metadata->id, chunk_id);
-          rc = remove(chunk_path);
-          if (rc < 0) {
-            fprintf(stderr, "Error: Unable to delete chunk %d: %s\n", chunk_id,
-                    chunk_path);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-          }
-        }
-        free(chunk_path);
-        break;
-      default:
-        fprintf(stderr, "Error: Unknown backend format!\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+    }
+    else {
+      fprintf(stderr, "Error: Unknown storage backend!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     // finally, remove the marked metadata

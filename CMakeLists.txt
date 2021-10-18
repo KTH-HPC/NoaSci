@@ -12,6 +12,7 @@ if (POLICY CMP0074)
 endif()
 
 option(USE_MERO "Build Mero Object Store Backend" OFF)
+option(DEBUG "DEBUG messages for Motr" OFF)
 
 find_package(MPI REQUIRED)
 find_package(HDF5 COMPONENTS C HL)
@@ -66,10 +67,12 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         list(REMOVE_ITEM MOTR_CFLAGS "-includeconfig.h")
         list(APPEND MOTR_CFLAGS -include/usr/include/motr/config.h)
         target_compile_options(noa_motr PUBLIC -fPIC)
-        #target_compile_definitions(noa_motr PRIVATE DEBUG)
         target_compile_definitions(noa_motr PUBLIC USE_MERO)
         target_compile_options(noa_motr PRIVATE
                                ${MOTR_CFLAGS})
+        if (DEBUG)
+            target_compile_definitions(noa_motr PRIVATE DEBUG)
+        endif()
     endif()
 
     # build libaoi
@@ -121,6 +124,26 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${MPI_INCLUDE_PATH}
         ${CMAKE_CURRENT_BINARY_DIR}/src
         include) 
+
+    # build mnist storing app
+    add_executable(mnist_put.out src/examples/mnist_put.c)
+    target_compile_options(mnist_put.out PUBLIC -O3 -Wall)
+    # add mero def
+    if(USE_MERO)
+        target_compile_definitions(mnist_put.out PRIVATE USE_MERO)
+    endif()
+
+    target_link_libraries(mnist_put.out PUBLIC
+        ${PROTO-C_LINK_LIBRARIES}
+        noa
+        MPI::MPI_C)
+
+    target_include_directories(mnist_put.out PUBLIC
+        ${PROTO-C_INCLUDE_DIRS}
+        ${MPI_INCLUDE_PATH}
+        ${CMAKE_CURRENT_BINARY_DIR}/src
+        include) 
+
 else()
     message("Error finding packages!")
 endif()

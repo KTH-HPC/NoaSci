@@ -34,10 +34,10 @@ printf("connected!\n");
   int rc;
   rc = noa_container_open(&bucket, container_name, metadata_path, data_path);
 
-  //    printf("metadata_path:   %s\n", bucket->name);
-  //    printf("key_value_store: %s\n", bucket->key_value_store);
-  //    printf("object_store:    %s\n", bucket->object_store);
-  //
+      printf("metadata_path:   %s\n", bucket->name);
+      printf("key_value_store: %s\n", bucket->key_value_store);
+      printf("object_store:    %s\n", bucket->object_store);
+  
 
   // long dims[]       = { 2, 4, 8 };
   // long chunk_dims[] = { 2, 2, 4 }; // 1x2x2
@@ -67,17 +67,34 @@ printf("connected!\n");
   printf("number of chunks: %d\n", chunks);
   for (int chunk = 0; chunk < chunks; chunk++) {
     printf("Putting chunk: %d\n", chunk);
-    bucket->mpi_rank = chunk;
-
-    //rc = noa_put_chunk(bucket, metadata_data, data + chunk*CHUNK_SIZE*features, 0, header); assert(rc == 0);
-    //rc = noa_put_chunk(bucket, metadata_labels, labels + chunk*CHUNK_SIZE*classes, 0, header); assert(rc == 0);
-    printf("data: %x\n", data);
-    //rc = noa_put_chunk(bucket, metadata_data, data, 0, header); assert(rc == 0);
-    rc = noa_put_chunk(bucket, metadata_labels, labels, 0, header); assert(rc == 0);
+    rc = noa_put_chunk_by_id(bucket, metadata_data, chunk, data + chunk*CHUNK_SIZE*features, 0, header); assert(rc == 0);
+    rc = noa_put_chunk_by_id(bucket, metadata_labels, chunk, labels + chunk*CHUNK_SIZE*classes, 0, header); assert(rc == 0);
+    printf("data: %f\n", data);
   }
   rc = noa_put_metadata(bucket, metadata_data); assert(rc == 0);
   rc = noa_put_metadata(bucket, metadata_labels); assert(rc == 0);
+  rc = noa_free_metadata(bucket, metadata_data);
+  rc = noa_free_metadata(bucket, metadata_labels);
+  rc = noa_container_close(bucket);
   MPI_Barrier(MPI_COMM_WORLD);
+
+  // delete
+  rc = noa_container_open(&bucket, container_name, metadata_path, data_path);
+  metadata_data = noa_get_metadata(bucket, "data");
+  metadata_labels = noa_get_metadata(bucket, "labels");
+printf("datatype: %d\n", metadata_data->datatype);
+printf("id: %s\n", metadata_data->id);
+  float *verify_data = malloc(sizeof(float) * CHUNK_SIZE * features);
+  float *verify_labels = malloc(sizeof(float) * CHUNK_SIZE * features);
+  char *verify_header = NULL;
+
+  for (int chunk = 0; chunk < chunks; chunk++) {
+    rc = noa_get_chunk(bucket, metadata_data, (void**)&verify_data, &verify_header, chunk);
+    rc = noa_get_chunk(bucket, metadata_labels, (void**)&verify_labels, &verify_header, chunk);
+  }
+
+  rc = noa_delete(bucket, metadata_data);
+  rc = noa_delete(bucket, metadata_labels);
 
   MPI_Finalize();
   return 0;

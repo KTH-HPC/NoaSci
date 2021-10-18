@@ -79,6 +79,132 @@ static int read_binary_file(const char *filename, void **data, size_t *size) {
   return 0;
 }
 
+int put_object_chunk_binary_by_id(const container *bucket,
+                            const NoaMetadata *object_metadata, const int chunk_id,
+                            const char *suffix, const void *data,
+                            const size_t offset, const char *header) {
+  // create storage path
+  // (data storage)/(uuid)-(chunk id).h5\0
+  size_t total_file_size = 1;
+  size_t chunk_path_len = 0;
+  char *chunk_path = NULL;
+#ifdef USE_MERO
+  uint64_t high_id;
+  int rc = 0;
+  size_t buffer_with_header_size = 0;
+  void *buffer_with_header = NULL;
+  MPI_Request high_id_req;
+#endif
+
+  // compute total size with data type
+  switch (object_metadata->datatype) {
+    case INT:
+      total_file_size = sizeof(int);
+      break;
+    case DOUBLE:
+      total_file_size = sizeof(double);
+      break;
+    case FLOAT:
+      total_file_size = sizeof(float);
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown datatype!\n");
+      break;
+  }
+  for (size_t i = 0; i < object_metadata->n_dims; i++)
+    total_file_size *= object_metadata->chunk_dims[i];
+
+  switch (object_metadata->backend) {
+    case BINARY:
+    case VTK:
+      // compute path length and allocate memory
+      chunk_path_len =
+          strlen(bucket->object_store) + strlen(object_metadata->id) +
+          snprintf(NULL, 0, "%d.%s", chunk_id, suffix) + 3;
+      chunk_path = malloc(sizeof(char) * chunk_path_len);
+
+      // generate path
+      snprintf(chunk_path, chunk_path_len, "%s/%s-%d.%s", bucket->object_store,
+               object_metadata->id, chunk_id, suffix);
+
+      // write binary file and free path buffer
+      write_binary_file(chunk_path, &data[offset], total_file_size, header);
+      free(chunk_path);
+      break;
+    case MERO:
+#ifdef USE_MERO
+      if (header != NULL) {
+        // if header is provided, we need to adjust the size
+        buffer_with_header_size = sizeof(char)*strlen(header) + sizeof(void)*total_file_size;
+      }
+      else {
+        // if header is not provided, we keep what we have and reuse the buffer
+        buffer_with_header_size = total_file_size;
+        buffer_with_header = data;
+      }
+
+      // rank zero creates metadata object and generate high ID
+      if (bucket->mpi_rank == 0) {
+        high_id = hex_to_uint64(object_metadata->id);
+        if (motr_exist_object(high_id, _METADATA_CHUNK_ID)) {
+            fprintf(stderr, "INFO: Object with same size already exist, return same High ID for overwritting!\n");
+          // check if the same object already exist
+          size_t verify_num, verify_size, verify_high_id;
+          rc = motr_get_object_metadata(object_metadata->id, &verify_high_id, &verify_num, &verify_size);
+          if (verify_high_id == high_id && verify_num == 1 && buffer_with_header_size == verify_size) {
+            fprintf(stderr, "INFO: Object with same size already exist, return same High ID for overwritting!\n");
+          }
+        }
+        else {
+          rc = motr_create_object_metadata(object_metadata->id, &high_id, buffer_with_header_size, sizeof(void));
+          if (rc) {
+            fprintf(stderr, "PUT: Failed to create metadata!\n");
+            return rc;
+          }
+        }
+      }
+
+      // broadcast high ID
+      MPI_Ibcast(&high_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD, &high_id_req);
+
+      if (header != NULL) {
+        // if we have a header, we need to merge the two buffers
+        // TODO in nao_motr to write to the same object with offset
+        buffer_with_header = malloc(buffer_with_header_size);
+        memcpy(buffer_with_header, header, sizeof(char)*strlen(header));
+        memcpy(buffer_with_header + sizeof(char)*strlen(header), data, total_file_size * sizeof(void));
+      }
+
+      MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
+      rc = motr_create_object(high_id, chunk_id);
+      if (rc) {
+        motr_delete_object(high_id, chunk_id);
+        fprintf(stderr, "PUT: Failed to create data object!\n");
+        return rc;
+      }
+
+      // write object to mero
+      rc = motr_write_object(high_id, chunk_id, (char *)buffer_with_header, buffer_with_header_size);
+      if (rc) {
+        motr_delete_object(high_id, chunk_id);
+        fprintf(stderr, "PUT: Failed to write data!\n");
+        return rc;
+      }
+
+      // free concat buffer for header and data
+      if (header != NULL) free(buffer_with_header);
+#else
+      fprintf(stderr, "Error: Meror not supported!\n");
+#endif
+      break;
+    default:
+      fprintf(stderr, "Error: Unknown data backend!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+  return 0;
+}
+
+
 int put_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
                             const char *suffix, const void *data,
@@ -193,7 +319,6 @@ int get_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
                             const char *suffix, void **data, char **header, int chunk_id) {
   fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
-  *header = NULL;
 
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0

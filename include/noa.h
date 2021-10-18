@@ -46,6 +46,8 @@ int noa_container_open(container **bucket, const char *container_name,
 int noa_container_close(container *bucket);
 
 // Object operations for one chunk per process
+int noa_put_chunk_by_id(const container* bucket, const NoaMetadata* object_metadata,
+                        const int chunk_id, const void* data, const size_t offset, const char* header);
 int noa_put_chunk(const container *bucket, const NoaMetadata *object_metadata,
                   const void *data, const size_t offset, const char *header);
 // get chunk with custom chunk ID (rather than rank)

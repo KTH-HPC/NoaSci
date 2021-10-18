@@ -160,4 +160,6 @@ if (USE_MERO)
     message("Use Mero: ON")
 else()
     message("Use Mero: OFF")
+
+message("Debug is: ${DEBUG}")
 endif()

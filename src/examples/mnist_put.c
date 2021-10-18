@@ -12,6 +12,16 @@
 
 #define CHUNK_SIZE 100
 
+void compare_array(float *array_original, float *array_retrieved, size_t size)
+{
+  for (size_t k = 0; k < size; k++) {
+    float original = array_original[k];
+    float retrieved = array_retrieved[k];
+    if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
+  }
+}
+
+
 int dataset_write(const char* container_name, int n, int features, int classes, float* data, float* labels) {
   int world_size, world_rank;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -24,7 +34,6 @@ int dataset_write(const char* container_name, int n, int features, int classes, 
   char mero_filename[265];
   snprintf(mero_filename, 265, "./%s", hostname);
   noa_init(mero_filename, 4096, world_rank, 0);
-printf("connected!\n");
 
   const char* metadata_path = "./metadata";
   const char* data_path = "./data";
@@ -37,10 +46,7 @@ printf("connected!\n");
       printf("metadata_path:   %s\n", bucket->name);
       printf("key_value_store: %s\n", bucket->key_value_store);
       printf("object_store:    %s\n", bucket->object_store);
-  
 
-  // long dims[]       = { 2, 4, 8 };
-  // long chunk_dims[] = { 2, 2, 4 }; // 1x2x2
   long dims_data[] = { n, features };
   long dims_labels[] = { n, classes };
   long chunk_dims_data[] = { CHUNK_SIZE, features };
@@ -69,99 +75,49 @@ printf("connected!\n");
     printf("Putting chunk: %d\n", chunk);
     rc = noa_put_chunk_by_id(bucket, metadata_data, chunk, data + chunk*CHUNK_SIZE*features, 0, header); assert(rc == 0);
     rc = noa_put_chunk_by_id(bucket, metadata_labels, chunk, labels + chunk*CHUNK_SIZE*classes, 0, header); assert(rc == 0);
-    printf("data: %f\n", data);
   }
+
   rc = noa_put_metadata(bucket, metadata_data); assert(rc == 0);
   rc = noa_put_metadata(bucket, metadata_labels); assert(rc == 0);
+
   rc = noa_free_metadata(bucket, metadata_data);
   rc = noa_free_metadata(bucket, metadata_labels);
+
   rc = noa_container_close(bucket);
   MPI_Barrier(MPI_COMM_WORLD);
 
-  // delete
-  rc = noa_container_open(&bucket, container_name, metadata_path, data_path);
+  // get and verify
+  rc = noa_container_open(&bucket, container_name, metadata_path, data_path); assert(rc == 0);
   metadata_data = noa_get_metadata(bucket, "data");
   metadata_labels = noa_get_metadata(bucket, "labels");
-printf("datatype: %d\n", metadata_data->datatype);
-printf("id: %s\n", metadata_data->id);
+
+  printf("datatype: %d\n", metadata_data->datatype);
+  printf("id: %s\n", metadata_data->id);
+
   float *verify_data = malloc(sizeof(float) * CHUNK_SIZE * features);
-  float *verify_labels = malloc(sizeof(float) * CHUNK_SIZE * features);
+  float *verify_labels = malloc(sizeof(float) * CHUNK_SIZE * classes);
+  // header is always NULL for binary since unimplemented
   char *verify_header = NULL;
 
   for (int chunk = 0; chunk < chunks; chunk++) {
+    printf("Verifying chunk: %d\n", chunk);
     rc = noa_get_chunk(bucket, metadata_data, (void**)&verify_data, &verify_header, chunk);
+    compare_array(verify_data, data + chunk*CHUNK_SIZE*features, CHUNK_SIZE * features);
+    free(verify_data);
+
     rc = noa_get_chunk(bucket, metadata_labels, (void**)&verify_labels, &verify_header, chunk);
+    compare_array(verify_labels, labels + chunk*CHUNK_SIZE*classes, CHUNK_SIZE * classes);
+    free(verify_labels);
   }
 
+  // delete
+  printf("Deleting chunks\n");
   rc = noa_delete(bucket, metadata_data);
   rc = noa_delete(bucket, metadata_labels);
-
-  MPI_Finalize();
-  return 0;
-#if 0
-  data_orig = malloc(sizeof(double) * total_size);
-
-  for (int mpi_rank = 0; mpi_rank < 4; ++mpi_rank) {
-    bucket->mpi_rank = mpi_rank;
-    for (int k = 0; k < chunk_dims[2]; k++) {
-      for (int j = 0; j < chunk_dims[1]; j++) {
-        for (int i = 0; i < chunk_dims[0]; i++) {
-          // data[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] =
-          // (double)(k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i);
-          data_orig[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i] =
-              bucket->mpi_rank;
-        }
-      }
-    }
-
-    rc = noa_put_chunk(bucket, metadata, data_orig, 0, header); assert(rc == 0);
-    rc = noa_put_metadata(bucket, metadata); assert(rc == 0);
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-
-  rc = noa_free_metadata(bucket, metadata);
-  assert(rc == 0);
-
-  metadata = noa_get_metadata(bucket, "testObject");
-  char* get_header;
-  rc = noa_get_chunk(bucket, metadata, (void**)&data_read, &get_header);
-  printf("get header: %s\n", get_header);
-
-  // rc = noa_free_metadata(bucket, metadata);
-  // assert(rc == 0);
-  //    rc = noa_delete(bucket, metadata);
-  noa_metadata__free_unpacked(metadata, NULL);
   rc = noa_container_close(bucket);
-  assert(rc == 0);
-
-  for (int rank = 0; rank < world_size; rank++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    if (rank == bucket->mpi_rank) {
-      for (size_t k = 0; k < chunk_dims[2]; k++) {
-        for (size_t j = 0; j < chunk_dims[1]; j++) {
-          for (size_t i = 0; i < chunk_dims[0]; i++) {
-            double original = data_orig[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
-            double retrieved = data_read[k * chunk_dims[1] * chunk_dims[0] + j * chunk_dims[0] + i];
-            if (fabs(original - retrieved) > 0.005) fprintf(stderr, "error: %f %f\n", original, retrieved);
-            //printf("%f ", data[k * chunk_dims[1] * chunk_dims[0] +
-            //                   j * chunk_dims[0] + i]);
-          }
-          //printf("\n");
-        }
-        //printf("%d next layer...\n", bucket->mpi_rank);
-      }
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
-
-  free(data_orig);
-  free(data_read);
-  free(get_header);
 
   MPI_Finalize();
   return 0;
-#endif
 }
 
 int main(int argc, char* argv[]) {

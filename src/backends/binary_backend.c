@@ -178,8 +178,6 @@ int put_object_chunk_binary(const container *bucket,
         fprintf(stderr, "PUT: Failed to write data!\n");
         return rc;
       }
-
-      if (buffer_with_header != NULL) free(buffer_with_header);
 #else
       fprintf(stderr, "Error: Meror not supported!\n");
 #endif

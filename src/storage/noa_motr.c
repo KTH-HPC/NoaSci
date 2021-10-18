@@ -367,9 +367,6 @@ motr_create_object(uint64_t high_id, uint64_t low_id)
 	m0_op_fini(ops[0]);
 	m0_op_free(ops[0]);
 	m0_entity_fini(&obj.ob_entity);
-#ifdef DEBUG
-	printf("Object creation successful\n\n");
-#endif
 
 	return rc;
 }
@@ -416,10 +413,9 @@ motr_read_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length)
 	int             byte_count = 0;
 
 #ifdef DEBUG
-	fprintf(stderr, "read object %ld %ld\n", high_id, low_id);
-	fprintf(stderr, "read block size:    %ld\n", clovis_block_size);
-	fprintf(stderr, "read n_blocks:      %d\n", n_blocks);
-	fprintf(stderr, "read n_full_blocks: %d\n", n_full_blocks);
+	fprintf(stderr, "motr_read_object(): read block size:    %ld\n", clovis_block_size);
+	fprintf(stderr, "motr_read_object(): read n_blocks:      %d\n", n_blocks);
+	fprintf(stderr, "motr_read_object(): read n_full_blocks: %d\n", n_full_blocks);
 #endif
 
 	struct m0_indexvec ext;
@@ -435,9 +431,7 @@ motr_read_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length)
 	long cnt = 0;
 	int block_count = (n_full_blocks - cnt) > MAX_BLOCK_CNT_PER_OP ? MAX_BLOCK_CNT_PER_OP : (n_full_blocks - cnt);
 	if (block_count == 0) block_count = 1;
-#ifdef DEBUG
-		fprintf(stderr, "cnt: %ld , block_count: %d\n", cnt, block_count);
-#endif
+
 	rc = m0_indexvec_alloc(&ext, block_count);
 	if (rc) return rc;
 
@@ -533,10 +527,9 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 	struct m0_bufvec attr;
 	int             i;
 #ifdef DEBUG
-	fprintf(stderr, "motr_write_object\n");
-	fprintf(stderr, "write block size:    %ld\n", clovis_block_size);
-	fprintf(stderr, "write n_blocks:      %d\n", n_blocks);
-	fprintf(stderr, "write n_full_blocks: %d\n", n_full_blocks);
+	fprintf(stderr, "motr_write_object(): write block size:    %ld\n", clovis_block_size);
+	fprintf(stderr, "motr_write_object(): write n_blocks:      %d\n", n_blocks);
+	fprintf(stderr, "motr_write_object(): write n_full_blocks: %d\n", n_full_blocks);
 #endif
 
 	struct m0_uint128 id = {
@@ -625,8 +618,8 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 #endif
 	}
 
-//#ifdef DEBUG
-//	printf("Object creation successful\n\n");
+#ifdef DEBUG
+	printf("Object creation successful, now try to retrieve it...\n\n");
         void *verify_data = malloc(length);
         rc = motr_read_object(high_id, low_id, verify_data, length);
 	char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
@@ -634,7 +627,8 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 	fwrite(verify_data, sizeof(void), length, fp);
 	fclose(fp);
 	free(verify_data);
-//#endif
+	printf("Object retrieved at %ld_%ld.bin ..\n\n", high_id, low_id);
+#endif
 	return rc;
 }
 

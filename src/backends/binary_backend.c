@@ -175,8 +175,9 @@ int put_object_chunk_binary_by_id(const container *bucket,
         memcpy(buffer_with_header + sizeof(char)*strlen(header), data, total_file_size * sizeof(void));
       }
 
+      uint64_t optimal_block_size = c0appz_m0bs(high_id, chunk_id, buffer_with_header_size);
       MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
-      rc = motr_create_object(high_id, chunk_id);
+      rc = motr_create_object(high_id, chunk_id, optimal_block_size);
       if (rc) {
         motr_delete_object(high_id, chunk_id);
         fprintf(stderr, "PUT: Failed to create data object!\n");
@@ -184,7 +185,7 @@ int put_object_chunk_binary_by_id(const container *bucket,
       }
 
       // write object to mero
-      rc = motr_write_object(high_id, chunk_id, (char *)buffer_with_header, buffer_with_header_size);
+      rc = motr_write_object(high_id, chunk_id, (char *)buffer_with_header, buffer_with_header_size, optimal_block_size);
       if (rc) {
         motr_delete_object(high_id, chunk_id);
         fprintf(stderr, "PUT: Failed to write data!\n");
@@ -194,7 +195,7 @@ int put_object_chunk_binary_by_id(const container *bucket,
       // free concat buffer for header and data
       if (header != NULL) free(buffer_with_header);
 #else
-      fprintf(stderr, "Error: Meror not supported!\n");
+      fprintf(stderr, "Error: Mero not supported!\n");
 #endif
       break;
     default:
@@ -290,7 +291,8 @@ int put_object_chunk_binary(const container *bucket,
       }
 
       MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
-      rc = motr_create_object(high_id, bucket->mpi_rank);
+      uint64_t optimal_block_size = c0appz_m0bs(high_id, bucket->mpi_rank, buffer_with_header_size);
+      rc = motr_create_object(high_id, bucket->mpi_rank, optimal_block_size);
       if (rc) {
         motr_delete_object(high_id, bucket->mpi_rank);
         fprintf(stderr, "PUT: Failed to create data object!\n");
@@ -298,14 +300,14 @@ int put_object_chunk_binary(const container *bucket,
       }
 
       // write object to mero
-      rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer_with_header, buffer_with_header_size);
+      rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer_with_header, buffer_with_header_size, optimal_block_size);
       if (rc) {
         motr_delete_object(high_id, bucket->mpi_rank);
         fprintf(stderr, "PUT: Failed to write data!\n");
         return rc;
       }
 #else
-      fprintf(stderr, "Error: Meror not supported!\n");
+      fprintf(stderr, "Error: Mero not supported!\n");
 #endif
       break;
     default:
@@ -318,7 +320,7 @@ int put_object_chunk_binary(const container *bucket,
 int get_object_chunk_binary(const container *bucket,
                             const NoaMetadata *object_metadata,
                             const char *suffix, void **data, char **header, int chunk_id) {
-  fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
+  if (bucket->mpi_rank ==0) fprintf(stderr, "Warning: Binary header read is not supported yet.\n");
 
   // create storage path
   // (data storage)/(uuid)-(chunk id).h5\0
@@ -382,7 +384,8 @@ int get_object_chunk_binary(const container *bucket,
       if (*data == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
 
       MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
-      rc = motr_read_object(high_id, chunk_id, *data, total_buffer_size);
+      uint64_t optimal_block_size = c0appz_m0bs(high_id, chunk_id, total_buffer_size);
+      rc = motr_read_object(high_id, chunk_id, *data, total_buffer_size, optimal_block_size);
       if (rc) { free(*data); fprintf(stderr, "GET: Fail to get object data!\n"); }
 #else
       fprintf(stderr, "Error: Mero not supported!\n");

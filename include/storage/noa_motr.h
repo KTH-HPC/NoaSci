@@ -17,8 +17,6 @@ extern "C" {
 
 typedef unsigned long uint64_t;
 
-uint64_t hex_to_uint64(char const *str);
-
 int motr_create_object_metadata(const char *object_name, uint64_t *high_id, const size_t num, const size_t size);
 
 int motr_get_object_metadata(const char *object_name, uint64_t *high_id, size_t *num, size_t *size);
@@ -33,13 +31,15 @@ int motr_init(char *laddr, char *ha_addr, char *prof_id, char *proc_fid, size_t 
 
 void motr_fini(void);
 
-int motr_create_object(uint64_t high_id, uint64_t low_id);
+uint64_t c0appz_m0bs(uint64_t idhi, uint64_t idlo, uint64_t obj_sz);
+
+int motr_create_object(uint64_t high_id, uint64_t low_id, size_t bsz);
 
 int motr_delete_object(uint64_t high_id, uint64_t low_id);
 
-int motr_read_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length);
+int motr_read_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length, size_t clovis_block_size);
 
-int motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length);
+int motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length, size_t clovis_block_size);
 
 int motr_exist_object(uint64_t high_id, uint64_t low_id);
 

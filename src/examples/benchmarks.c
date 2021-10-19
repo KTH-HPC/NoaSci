@@ -431,14 +431,14 @@ int main(int argc, char* argv[]) {
 
   long dims[] = {
       1,
-      4096,
-      4096,
+      16384,
+      16384,
   };
 
   long chunk_dims[] = {
       1,
-      2048,
-      2048,
+      8192,
+      8192,
   };  // 1x2x2
 
   size_t total_size = chunk_dims[0];
@@ -456,30 +456,30 @@ int main(int argc, char* argv[]) {
 
   if (world_rank == 0) fprintf(stderr, "INFO: Chunk size: %d x %f MiB\n", world_size, (total_size * sizeof(double) / 1024.0 / 1024.0));
 
-  // test POSIX HDF5 format
-  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
-  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
-  test_delete(HDF5, POSIX);
+//  // test POSIX HDF5 format
+//  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
+//  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
+//  test_delete(HDF5, POSIX);
 
   // test MERO HDF5 format
   test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, MERO);
   test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, MERO);
   test_delete(HDF5, MERO);
 
-  // test POSIX BINARY format
-  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-  test_delete(BINARY, POSIX);
+//  // test POSIX BINARY format
+//  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
+//  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
+//  test_delete(BINARY, POSIX);
 
   // test MERO BINARY format
   test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
   test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
   test_delete(BINARY, MERO);
 
-  // test POSIX BINARY format
-  test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-  test_get_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-  test_delete(BINARY, POSIX);
+//  // test POSIX BINARY format
+//  test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
+//  test_get_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
+//  test_delete(BINARY, POSIX);
 
   // test MERO BINARY format
   test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);

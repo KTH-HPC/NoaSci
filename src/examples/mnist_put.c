@@ -131,7 +131,6 @@ int main(int argc, char* argv[]) {
   char* pc;
   float* pf;
   int n, features, classes;
-  int x;
 
   MPI_Init(&argc, &argv);
 

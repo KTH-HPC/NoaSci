@@ -11,7 +11,7 @@
 
 #include "noa.h"
 #include "private/binary_backend.h"
-#include "private/binary_backend.h"
+#include "private/hdf5_backend.h"
 #include "storage/noa_motr.h"
 
 int noa_put_chunk_by_id(const container* bucket, const NoaMetadata* object_metadata,

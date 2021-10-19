@@ -264,15 +264,16 @@ int put_object_chunk_hdf5(const container *bucket,
     buffer = malloc(imgSize);
     H5Fget_file_image(file, buffer, imgSize);
     MPI_Wait(&mpi_req, MPI_STATUS_IGNORE);
+    uint64_t optimal_block_size = c0appz_m0bs(high_id, bucket->mpi_rank, imgSize);
 
-    rc = motr_create_object(high_id, bucket->mpi_rank);
+    rc = motr_create_object(high_id, bucket->mpi_rank, optimal_block_size);
     if (rc) {
       motr_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to create data object!\n");
       return rc;
     }
 
-    rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer, imgSize);
+    rc = motr_write_object(high_id, bucket->mpi_rank, (char *)buffer, imgSize, optimal_block_size);
     if (rc) {
       motr_delete_object(high_id, bucket->mpi_rank);
       fprintf(stderr, "PUT: Failed to write data!\n");
@@ -333,7 +334,8 @@ int get_object_chunk_hdf5(const container *bucket,
         if (buffer == NULL) { fprintf(stderr, "GET: Memory alloc failed!\n"); return -1; }
 
         MPI_Wait(&high_id_req, MPI_STATUS_IGNORE);
-        rc = motr_read_object(high_id, chunk_id, buffer, total_buffer_size);
+        uint64_t optimal_block_size = c0appz_m0bs(high_id, chunk_id, total_buffer_size);
+        rc = motr_read_object(high_id, chunk_id, buffer, total_buffer_size, optimal_block_size);
         if (rc) { free(buffer); fprintf(stderr, "GET: Fail to get object data!\n"); }
 
         file = H5LTopen_file_image(buffer, total_buffer_size, H5LT_FILE_IMAGE_DONT_COPY | H5LT_FILE_IMAGE_OPEN_RW/* | H5LT_FILE_IMAGE_DONT_RELEASE*/);

@@ -106,20 +106,20 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     # PIC for shared library
     target_compile_options(noa PRIVATE -O3 -fPIC -Wall)
 
-    # build example app
-    add_executable(app.out ${APP_SRC})
-    target_compile_options(app.out PUBLIC -O3 -Wall)
+    # benchmark app
+    add_executable(benchmark.out src/examples/benchmarks.c)
+    target_compile_options(benchmark.out PUBLIC -O3 -Wall)
     # add mero def
     if(USE_MERO)
-        target_compile_definitions(app.out PRIVATE USE_MERO)
+        target_compile_definitions(benchmark.out PRIVATE USE_MERO)
     endif()
 
-    target_link_libraries(app.out PUBLIC
+    target_link_libraries(benchmark.out PUBLIC
         ${PROTO-C_LINK_LIBRARIES}
         noa
         MPI::MPI_C)
 
-    target_include_directories(app.out PUBLIC
+    target_include_directories(benchmark.out PUBLIC
         ${PROTO-C_INCLUDE_DIRS}
         ${MPI_INCLUDE_PATH}
         ${CMAKE_CURRENT_BINARY_DIR}/src

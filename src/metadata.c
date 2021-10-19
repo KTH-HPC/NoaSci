@@ -105,10 +105,11 @@ NoaMetadata* noa_create_metadata(const container* bucket,
   for (int i = 0; i < dimensionality; i++)
     num_proc_needed *= dims[i] / chunk_dims[i];
   if (num_proc_needed != world_size)
-    fprintf(stderr,
-            "Warning: chunking scheme requires %d processes, the total number "
-            "of MPI processes is %d.\n",
-            num_proc_needed, world_size);
+    if (bucket->mpi_rank == 0)
+      fprintf(stderr,
+              "Warning: chunking scheme requires %d processes, the total number "
+              "of MPI processes is %d.\n",
+              num_proc_needed, world_size);
 
   // create protobuf that stores metadata
   NoaMetadata* object_metadata = (NoaMetadata*)malloc(sizeof(NoaMetadata));

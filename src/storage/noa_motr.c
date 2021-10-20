@@ -62,7 +62,7 @@ static struct m0_fid *const TIERS[] = {
 
 static const size_t N_TIER = sizeof(TIERS) / sizeof(TIERS[0]);
 
-static uint64_t hex_to_uint64(char const *str)
+uint64_t hex_to_uint64(char const *str)
 {
 	uint64_t accumulator = 0;
 	for (size_t i = 0 ; isxdigit((unsigned char)str[i]) ; ++i) {

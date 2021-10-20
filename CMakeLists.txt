@@ -115,6 +115,7 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     endif()
 
     target_link_libraries(benchmark.out PUBLIC
+        m
         ${PROTO-C_LINK_LIBRARIES}
         noa
         MPI::MPI_C)

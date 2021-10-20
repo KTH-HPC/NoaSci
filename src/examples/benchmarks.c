@@ -13,6 +13,7 @@ const char* metadata_path = "./metadata";
 const char* data_path = "./data";
 const char* container_name = "testcontainer";
 int world_size, world_rank;
+int verify = 0;
 
 void compare_array(double *array_original, double *array_retrieved, size_t size)
 {
@@ -26,7 +27,7 @@ void compare_array(double *array_original, double *array_retrieved, size_t size)
   }
 }
 
-void test_put(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_put(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc;
   char object_name[1024];
@@ -102,9 +103,10 @@ void test_put(double *array, int dimensionality, long *dims, long *chunk_dims, F
 
   if (header != NULL) free(header);
   MPI_Barrier(MPI_COMM_WORLD);
+  return max_time_container_open + max_time_create_metadata + max_time_put_chunk + max_time_put_metadata + max_time_free_metadata + max_time_container_close;
 }
 
-void test_get(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_get(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -164,7 +166,7 @@ void test_get(double *array, int dimensionality, long *dims, long *chunk_dims, F
       fprintf(stderr, "Header recovered incorrectly!!!!\n");
 
   // check array
-  compare_array(array, verify_data, total_size);
+  if (verify) compare_array(array, verify_data, total_size);
 
   double t6 = MPI_Wtime();
   rc = noa_free_metadata(bucket, metadata);
@@ -194,9 +196,10 @@ void test_get(double *array, int dimensionality, long *dims, long *chunk_dims, F
   free(verify_data);
   if (verify_header != NULL) free(verify_header);
   MPI_Barrier(MPI_COMM_WORLD);
+  return max_time_container_open + max_time_get_metadata + max_time_get_chunk + max_time_free_metadata + max_time_container_close;
 }
 
-void test_delete(FORMAT format, BACKEND backend)
+double test_delete(FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -245,9 +248,10 @@ void test_delete(FORMAT format, BACKEND backend)
     fprintf(stderr, "Close container (s) : %f\n\n", max_time_container_close);
   }
   MPI_Barrier(MPI_COMM_WORLD);
+  return max_time_container_open + max_time_get_metadata + max_time_delete + max_time_container_close;
 }
 
-void test_put_single(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_put_single(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -327,9 +331,10 @@ void test_put_single(double *array, int dimensionality, long *dims, long *chunk_
 
   if (header != NULL) free(header);
   MPI_Barrier(MPI_COMM_WORLD);
+  return max_time_container_open + max_time_create_metadata + (t5 - t4) + max_time_put_metadata + max_time_free_metadata + max_time_container_close;
 }
 
-void test_get_single(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_get_single(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -380,7 +385,7 @@ void test_get_single(double *array, int dimensionality, long *dims, long *chunk_
       rc = noa_get_chunk(bucket, metadata, (void**)&verify_data, &verify_header, chunk_id);
       assert(rc == 0);
       t5 = MPI_Wtime();
-      compare_array(array, verify_data, total_chunk_size);
+      if (verify) compare_array(array, verify_data, total_chunk_size);
       free(verify_data);
 
       // check header if not usinb binary format
@@ -414,9 +419,29 @@ void test_get_single(double *array, int dimensionality, long *dims, long *chunk_
     fprintf(stderr, "Close container (s) : %f\n\n", max_time_container_close);
   }
   MPI_Barrier(MPI_COMM_WORLD);
+  return max_time_container_open + max_time_get_metadata + (t5 - t4) + max_time_free_metadata + max_time_container_close;
 }
 
 int main(int argc, char* argv[]) {
+  if (argc != 5) {
+    fprintf(stderr, "Usage: %s [chunk size] [format] [repeats] [verify: 1/0]\n", argv[0]);
+    exit(1);
+  }
+
+  long array_chunk_size = atoi(argv[1]);
+  FORMAT format = HDF5;
+  if (strcmp(argv[2], "HDF5") == 0)
+    format = HDF5;
+  else if (strcmp(argv[2], "BINARY") == 0)
+    format = BINARY;
+  else {
+    fprintf(stderr, "Usage: %s [chunk size] [format] [repeats] [verify: 1/0]\n", argv[0]);
+    exit(1);
+  }
+
+  int repeats = atoi(argv[3]);
+  verify = atoi(argv[4]);
+
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
@@ -431,14 +456,14 @@ int main(int argc, char* argv[]) {
 
   long dims[] = {
       1,
-      16384,
-      16384,
+      array_chunk_size * sqrt(world_size),
+      array_chunk_size * sqrt(world_size),
   };
 
   long chunk_dims[] = {
       1,
-      8192,
-      8192,
+      array_chunk_size,
+      array_chunk_size,
   };  // 1x2x2
 
   size_t total_size = chunk_dims[0];
@@ -456,35 +481,28 @@ int main(int argc, char* argv[]) {
 
   if (world_rank == 0) fprintf(stderr, "INFO: Chunk size: %d x %f MiB\n", world_size, (total_size * sizeof(double) / 1024.0 / 1024.0));
 
-//  // test POSIX HDF5 format
-//  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
-//  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, POSIX);
-//  test_delete(HDF5, POSIX);
+  for (int i = 0; i < repeats; i++) {
+    double put_time = test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, format, MERO);
+    test_delete(format, MERO);
+    if (world_rank == 0) {
+      fprintf(stderr, "PUT: %f MiB / %f s = %f MiB/s\n", ((sizeof(double) * total_size * world_size) / 1024.0 / 1024), put_time, ((sizeof(double) * total_size * world_size) / 1024.0 / 1024) / put_time);
+    }
+  }
 
-  // test MERO HDF5 format
-  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, MERO);
-  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, HDF5, MERO);
-  test_delete(HDF5, MERO);
+  double put_time = test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, format, MERO);
+  for (int i = 0; i < repeats; i++) {
+    double get_time = test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, format, MERO);
+    if (world_rank == 0) {
+      fprintf(stderr, "GET: %f MiB / %f s = %f MiB/s\n", ((sizeof(double) * total_size * world_size) / 1024.0 / 1024), get_time, ((sizeof(double) * total_size * world_size) / 1024.0 / 1024) / get_time);
+    }
+  }
+  test_delete(format, MERO);
 
-//  // test POSIX BINARY format
-//  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-//  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-//  test_delete(BINARY, POSIX);
 
-  // test MERO BINARY format
-  test_put(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
-  test_get(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
-  test_delete(BINARY, MERO);
-
-//  // test POSIX BINARY format
-//  test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-//  test_get_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, POSIX);
-//  test_delete(BINARY, POSIX);
-
-  // test MERO BINARY format
-  test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
-  test_get_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
-  test_delete(BINARY, MERO);
+//  // test MERO BINARY format
+//  test_put_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
+//  test_get_single(data, sizeof(dims) / sizeof(*dims), dims, chunk_dims, BINARY, MERO);
+//  test_delete(BINARY, MERO);
 
   free (data);
   noa_finalize();

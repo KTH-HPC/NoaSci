@@ -150,6 +150,7 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
     }
 
     if (object_metadata->backend == MERO) {
+#ifdef USE_MERO
       uint64_t high_id;
       size_t num, size;
       rc = motr_get_object_metadata(object_metadata->id, &high_id, &num, &size);
@@ -160,6 +161,10 @@ int noa_delete(const container* bucket, NoaMetadata* object_metadata) {
       }
       rc = motr_delete_object(high_id, _METADATA_CHUNK_ID);
       assert(rc == 0);
+#else
+      fprintf(stderr, "Error: Mero not supported!\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+#endif
     }
     else if (object_metadata->backend == POSIX) {
       // delete actualy data

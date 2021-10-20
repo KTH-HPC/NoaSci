@@ -732,15 +732,15 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 	}
 
 #ifdef DEBUG
-//	printf("Object creation successful, now try to retrieve it...\n\n");
-//        void *verify_data = malloc(length);
-//        rc = motr_read_object(high_id, low_id, verify_data, length, clovis_block_size);
-//	char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
-//	FILE *fp = fopen(path_buf, "wb");
-//	fwrite(verify_data, sizeof(void), length, fp);
-//	fclose(fp);
-//	free(verify_data);
-//	printf("Object retrieved at %ld_%ld.bin ..\n\n", high_id, low_id);
+	printf("Object creation successful, now try to retrieve it...\n\n");
+        void *verify_data = malloc(length);
+        rc = motr_read_object(high_id, low_id, verify_data, length, clovis_block_size);
+	char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
+	FILE *fp = fopen(path_buf, "wb");
+	fwrite(verify_data, sizeof(void), length, fp);
+	fclose(fp);
+	free(verify_data);
+	printf("Object retrieved at %ld_%ld.bin ..\n\n", high_id, low_id);
 #endif
 	return rc;
 }

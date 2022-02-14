@@ -51,16 +51,16 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
     if(USE_MERO)
         pkg_search_module(JSON-C REQUIRED json-c)
         pkg_search_module(MOTR REQUIRED motr)
-        find_package(OpenSSL REQUIRED)
+	find_package(OpenSSL REQUIRED)
         add_library(noa_motr STATIC src/storage/noa_motr.c)
         target_include_directories(noa_motr PRIVATE
                                    include/storage
                                    ${JSON-C_INCLUDE_DIRS}
                                    ${MOTR_INCLUDE_DIRS}
-                                   ${SSL_INCLUDE_DIRS})
+                                   ${OPENSSL_INCLUDE_DIRS})
         target_link_libraries(noa_motr PRIVATE
                               ${JSON-C_LINK_LIBRARIES}
-                              ${SSL_LINK_LIBRARIES}
+                              ${OPENSSL_LIBRARIES}
                               ${MOTR_LIBRARIES})
 
         # hack to fix a conflict with the config.h from json-c
@@ -104,11 +104,11 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
         ${MPI_INCLUDE_PATH})
 
     # PIC for shared library
-    target_compile_options(noa PRIVATE -O3 -fPIC -Wall)
+    target_compile_options(noa PRIVATE -O3 -fPIC -Wall -g)
 
     # benchmark app
     add_executable(benchmark.out src/examples/benchmarks.c)
-    target_compile_options(benchmark.out PUBLIC -O3 -Wall)
+    target_compile_options(benchmark.out PUBLIC -O3 -Wall -g)
     # add mero def
     if(USE_MERO)
         target_compile_definitions(benchmark.out PRIVATE USE_MERO)
@@ -128,7 +128,7 @@ if(MPI_C_FOUND AND HDF5_FOUND AND PROTO-C_FOUND)
 
     # build mnist storing app
     add_executable(mnist_put.out src/examples/mnist_put.c)
-    target_compile_options(mnist_put.out PUBLIC -O3 -Wall)
+    target_compile_options(mnist_put.out PUBLIC -O3 -Wall -g)
     # add mero def
     if(USE_MERO)
         target_compile_definitions(mnist_put.out PRIVATE USE_MERO)
@@ -156,6 +156,7 @@ message("HDF5 include path: ${HDF5_INCLUDE_DIRS}")
 message("Protoc library:    ${PROTO-C_LINK_LIBRARIES}")
 message("Protoc include:    ${PROTO-C_INCLUDE_DIRS}")
 message("UUID library:      ${UUID_LINK_LIBRARIES}")
+message("OpenSSL library:   ${OPENSSL_LIBRARIES}")
 
 if (USE_MERO)
     message("Use Mero: ON")

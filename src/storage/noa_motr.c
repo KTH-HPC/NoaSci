@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
+#include <mpi.h>
+#include <math.h>
 
 #include "motr/client.h"
 //#include "motr/idx.h"
@@ -61,6 +63,19 @@ static struct m0_fid *const TIERS[] = {
 };
 
 static const size_t N_TIER = sizeof(TIERS) / sizeof(TIERS[0]);
+
+void compare_array(const char *array_original, const char *array_retrieved, size_t size)
+{
+  for (size_t k = 0; k < size; k++) {
+    const char original = array_original[k];
+    const char retrieved = array_retrieved[k];
+    if (original != retrieved) {
+      fprintf(stderr, "error: %c %c\n", original, retrieved);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+  }
+  fprintf(stderr, "Verification successfuly!\n");
+}
 
 uint64_t hex_to_uint64(char const *str)
 {
@@ -653,10 +668,10 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 	long cnt = 0;
 	int block_count = (n_full_blocks - cnt) > MAX_BLOCK_CNT_PER_OP ? MAX_BLOCK_CNT_PER_OP : (n_full_blocks - cnt);
 	if (block_count == 0) block_count = 1;
-#ifdef DEBUG
-	fprintf(stderr, "!!!! (%d - %ld) > %d : %ld -> %d\n", n_full_blocks, cnt, MAX_BLOCK_CNT_PER_OP, (n_full_blocks - cnt), block_count);
-	fprintf(stderr, "to allocate block count: %d\n", block_count);
-#endif
+//#ifdef DEBUG
+//	fprintf(stderr, "!!!! (%d - %ld) > %d : %ld -> %d\n", n_full_blocks, cnt, MAX_BLOCK_CNT_PER_OP, (n_full_blocks - cnt), block_count);
+//	fprintf(stderr, "to allocate block count: %d\n", block_count);
+//#endif
 	rc = m0_indexvec_alloc(&ext, block_count);
 	if (rc) return rc;
 
@@ -731,17 +746,18 @@ motr_write_object(uint64_t high_id, uint64_t low_id, char *buffer, size_t length
 #endif
 	}
 
-#ifdef DEBUG
-	printf("Object creation successful, now try to retrieve it...\n\n");
-        void *verify_data = malloc(length);
-        rc = motr_read_object(high_id, low_id, verify_data, length, clovis_block_size);
-	char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
-	FILE *fp = fopen(path_buf, "wb");
-	fwrite(verify_data, sizeof(void), length, fp);
-	fclose(fp);
-	free(verify_data);
-	printf("Object retrieved at %ld_%ld.bin ..\n\n", high_id, low_id);
-#endif
+//#ifdef DEBUG
+//	printf("Object creation successful, now try to retrieve it...\n\n");
+//        void *verify_data = malloc(length);
+//        rc = motr_read_object(high_id, low_id, verify_data, length, clovis_block_size);
+//	compare_array(buffer, verify_data, length);
+//	//char path_buf[1024]; snprintf(path_buf, 1024, "%ld_%ld.bin", high_id, low_id);
+//	//FILE *fp = fopen(path_buf, "wb");
+//	//fwrite(verify_data, sizeof(void), length, fp);
+//	//fclose(fp);
+//	free(verify_data);
+//	//printf("Object retrieved at %ld_%ld.bin ..\n\n", high_id, low_id);
+//#endif
 	return rc;
 }
 

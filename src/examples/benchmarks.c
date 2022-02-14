@@ -15,19 +15,21 @@ const char* container_name = "testcontainer";
 int world_size, world_rank;
 int verify = 0;
 
-void compare_array(double *array_original, double *array_retrieved, size_t size)
+void compare_array(const double *array_original, const double *array_retrieved, size_t size)
 {
   for (size_t k = 0; k < size; k++) {
     double original = array_original[k];
     double retrieved = array_retrieved[k];
+//    fprintf(stderr, "diff: %f %f\n", original, retrieved);
     if (fabs(original - retrieved) > 0.005) {
       fprintf(stderr, "error: %f %f\n", original, retrieved);
       MPI_Abort(MPI_COMM_WORLD, 1);
     }
   }
+  fprintf(stderr, "Verify successful!\n");
 }
 
-double test_put(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_put(const double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc;
   char object_name[1024];
@@ -106,7 +108,7 @@ double test_put(double *array, int dimensionality, long *dims, long *chunk_dims,
   return max_time_container_open + max_time_create_metadata + max_time_put_chunk + max_time_put_metadata + max_time_free_metadata + max_time_container_close;
 }
 
-double test_get(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_get(const double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -251,7 +253,7 @@ double test_delete(FORMAT format, BACKEND backend)
   return max_time_container_open + max_time_get_metadata + max_time_delete + max_time_container_close;
 }
 
-double test_put_single(double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
+double test_put_single(const double *array, int dimensionality, long *dims, long *chunk_dims, FORMAT format, BACKEND backend)
 {
   int rc = 0;
   char object_name[1024];
@@ -476,7 +478,7 @@ int main(int argc, char* argv[]) {
 
   double counter = 0.0;
   for (size_t k = 0; k < total_size; k++) {
-    data[k] = counter++;
+    data[k] = counter++ * 0.2;
   }
 
   if (world_rank == 0) fprintf(stderr, "INFO: Chunk size: %d x %f MiB\n", world_size, (total_size * sizeof(double) / 1024.0 / 1024.0));
